@@ -20,6 +20,7 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 ## Avance de construcción
 
 - [Implementación 01 — Cimentación de seguridad](implementacion-01-cimentacion.md)
+- [Implementación 02 — Ciclo inicial de identidades](implementacion-02-ciclo-identidades.md)
 
 ## Regla de implementación
 

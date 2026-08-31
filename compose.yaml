@@ -10,6 +10,7 @@ services:
     volumes:
       - control_postgres_data:/var/lib/postgresql/data
       - ./control/migrations/001_control_plane.sql:/docker-entrypoint-initdb.d/10-control-plane.sql:ro
+      - ./control/migrations/002_identity_lifecycle.sql:/docker-entrypoint-initdb.d/11-identity-lifecycle.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${CONTROL_POSTGRES_USER:-control_owner} -d ${CONTROL_POSTGRES_DB:-facturas_control}"]
       interval: 5s

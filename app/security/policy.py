@@ -131,18 +131,33 @@ PERMISSIONS: dict[str, PermissionSpec] = {
     "tenants.suspend": PermissionSpec(
         ModuleCode.CLIENT_ADMIN, _roles(D), control_level=ControlLevel.C3
     ),
-    "identities.invite": PermissionSpec(ModuleCode.IDENTITY_ACCESS, _roles(D, S)),
+    "identities.invite": PermissionSpec(
+        ModuleCode.IDENTITY_ACCESS, _roles(D, S), tenant_required=False
+    ),
     "identities.assign": PermissionSpec(
         ModuleCode.IDENTITY_ACCESS, _roles(D, S), control_level=ControlLevel.C2
     ),
     "identities.assign_global": PermissionSpec(
-        ModuleCode.IDENTITY_ACCESS, _roles(D), conditional_roles=_roles(S), control_level=ControlLevel.C3
+        ModuleCode.IDENTITY_ACCESS,
+        _roles(D),
+        conditional_roles=_roles(S),
+        control_level=ControlLevel.C3,
+        tenant_required=False,
     ),
     "identities.suspend": PermissionSpec(
-        ModuleCode.IDENTITY_ACCESS, _roles(D, S), control_level=ControlLevel.C2
+        ModuleCode.IDENTITY_ACCESS, _roles(D, S), control_level=ControlLevel.C2, tenant_required=False
+    ),
+    "identities.suspend_privileged": PermissionSpec(
+        ModuleCode.IDENTITY_ACCESS,
+        _roles(D, S),
+        control_level=ControlLevel.C3,
+        tenant_required=False,
     ),
     "sessions.revoke_any": PermissionSpec(
-        ModuleCode.IDENTITY_ACCESS, _roles(D, S), control_level=ControlLevel.C2
+        ModuleCode.IDENTITY_ACCESS, _roles(D, S), control_level=ControlLevel.C2, tenant_required=False
+    ),
+    "sessions.revoke_self": PermissionSpec(
+        ModuleCode.IDENTITY_ACCESS, _roles(D, S, C, R, F, O, T), tenant_required=False
     ),
     "audit.read_global": PermissionSpec(
         ModuleCode.SECURITY_AUDIT, _roles(D, S), tenant_required=False

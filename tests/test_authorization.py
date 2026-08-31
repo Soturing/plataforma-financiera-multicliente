@@ -218,3 +218,31 @@ def test_revoked_session_denies_every_action():
 
     assert not decision.allowed
     assert decision.code == "session_not_active"
+
+
+def test_user_can_revoke_own_session_without_global_scope():
+    tenant = uuid4()
+    actor = context(
+        grant(
+            RoleCode.CLIENT_FINANCE,
+            tenant,
+            ModuleCode.IDENTITY_ACCESS,
+            all_branches=True,
+        )
+    )
+
+    decision = authorize(actor, request("sessions.revoke_self"))
+
+    assert decision.allowed
+
+
+def test_privileged_suspension_requires_recent_hardware_key():
+    actor = context(
+        grant(RoleCode.SECURITY_ADMIN, None, all_modules=True, all_branches=True),
+        auth_level=AuthLevel.PASSKEY,
+    )
+
+    decision = authorize(actor, request("identities.suspend_privileged"))
+
+    assert not decision.allowed
+    assert decision.code == "hardware_key_required"

@@ -47,7 +47,9 @@ def authorize(context: SecurityContext, request: AuthorizationRequest) -> Author
 
     candidate_failure = "no_applicable_assignment"
     for grant in context.active_grants(now):
-        if not _tenant_applies(grant.role, grant.tenant_id, request.tenant_id):
+        if not _tenant_applies(
+            grant.role, grant.tenant_id, request.tenant_id, tenant_required=spec.tenant_required
+        ):
             continue
         if not grant.all_modules and spec.module not in grant.modules:
             candidate_failure = "module_not_assigned"
@@ -71,7 +73,11 @@ def authorize(context: SecurityContext, request: AuthorizationRequest) -> Author
     return _deny(candidate_failure)
 
 
-def _tenant_applies(role: RoleCode, assigned_tenant, requested_tenant) -> bool:
+def _tenant_applies(
+    role: RoleCode, assigned_tenant, requested_tenant, *, tenant_required: bool
+) -> bool:
+    if not tenant_required and requested_tenant is None:
+        return True
     if assigned_tenant is None:
         return role in GLOBAL_ROLES
     return assigned_tenant == requested_tenant

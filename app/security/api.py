@@ -5,15 +5,23 @@ from dataclasses import dataclass
 from typing import Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings, get_settings
 from app.security.control_repository import ControlPlaneRepository, SecurityContextNotFound
+from app.security.lifecycle import IdentityLifecycleService, InvitationCommand, LifecycleError
 from app.security.models import SecurityContext
 from app.security.models import AuthorizationRequest
 from app.security.authorization import AuthorizationDecision, authorize
 from app.security.oidc import OIDCConfigurationError, OIDCVerificationError, OIDCVerifier
+from app.security.schemas import (
+    InvitationCreatedResponse,
+    InvitationCreateRequest,
+    LifecycleActionResponse,
+    RevokeSessionRequest,
+    SuspendIdentityRequest,
+)
 
 
 router = APIRouter(prefix="/api/v1/security", tags=["seguridad"])
@@ -45,6 +53,13 @@ def _security_services(
     )
     repository = ControlPlaneRepository(control_database_url, identity_provider)
     return verifier, repository
+
+
+@lru_cache
+def _lifecycle_service(
+    control_database_url: str, identity_provider: str
+) -> IdentityLifecycleService:
+    return IdentityLifecycleService(control_database_url, identity_provider)
 
 
 def get_security_context(
@@ -132,3 +147,115 @@ def current_security_context(context: SecurityContext = Depends(get_security_con
             for grant in context.grants
         ],
     }
+
+
+@router.post(
+    "/invitations",
+    response_model=InvitationCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_invitation(
+    payload: InvitationCreateRequest,
+    response: Response,
+    x_request_id: UUID | None = Header(default=None, alias="X-Request-Id"),
+    context: SecurityContext = Depends(get_security_context),
+    settings: Settings = Depends(get_settings),
+):
+    service = _configured_lifecycle_service(settings)
+    try:
+        created = service.create_invitation(
+            context,
+            InvitationCommand(
+                email=payload.email,
+                role=payload.role,
+                tenant_id=payload.tenant_id,
+                modules=frozenset(payload.modules),
+                branch_ids=frozenset(payload.branch_ids),
+                conditional_permissions=frozenset(payload.conditional_permissions),
+                all_modules=payload.all_modules,
+                all_branches=payload.all_branches,
+                assignment_valid_until=payload.assignment_valid_until,
+                reason=payload.reason,
+            ),
+            request_id=x_request_id,
+        )
+    except LifecycleError as exc:
+        _raise_lifecycle_error(exc)
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "invitation_id": created.invitation_id,
+        "invitation_token": created.token,
+        "expires_at": created.expires_at,
+    }
+
+
+@router.post(
+    "/identities/{identity_id}/suspend",
+    response_model=LifecycleActionResponse,
+)
+def suspend_identity(
+    identity_id: UUID,
+    payload: SuspendIdentityRequest,
+    x_request_id: UUID | None = Header(default=None, alias="X-Request-Id"),
+    context: SecurityContext = Depends(get_security_context),
+    settings: Settings = Depends(get_settings),
+):
+    service = _configured_lifecycle_service(settings)
+    try:
+        service.suspend_identity(
+            context, identity_id, payload.reason, request_id=x_request_id
+        )
+    except LifecycleError as exc:
+        _raise_lifecycle_error(exc)
+    return {"status": "ok"}
+
+
+@router.post(
+    "/sessions/{session_id}/revoke",
+    response_model=LifecycleActionResponse,
+)
+def revoke_session(
+    session_id: UUID,
+    payload: RevokeSessionRequest,
+    x_request_id: UUID | None = Header(default=None, alias="X-Request-Id"),
+    context: SecurityContext = Depends(get_security_context),
+    settings: Settings = Depends(get_settings),
+):
+    service = _configured_lifecycle_service(settings)
+    try:
+        service.revoke_session(context, session_id, payload.reason, request_id=x_request_id)
+    except LifecycleError as exc:
+        _raise_lifecycle_error(exc)
+    return {"status": "ok"}
+
+
+def _configured_lifecycle_service(settings: Settings) -> IdentityLifecycleService:
+    if not settings.control_database_url or not settings.oidc_identity_provider:
+        raise HTTPException(status_code=503, detail="El plano de control no está configurado")
+    return _lifecycle_service(settings.control_database_url, settings.oidc_identity_provider)
+
+
+_AUTHORIZATION_ERRORS = {
+    "identity_not_active",
+    "session_not_active",
+    "tenant_selection_required",
+    "no_applicable_assignment",
+    "module_not_assigned",
+    "branch_selection_required",
+    "branch_not_assigned",
+    "action_not_granted",
+    "recent_authentication_required",
+    "reauthentication_required",
+    "phishing_resistant_authentication_required",
+    "hardware_key_required",
+    "self_assignment_forbidden",
+    "self_suspension_forbidden",
+}
+
+
+def _raise_lifecycle_error(exc: LifecycleError) -> None:
+    if exc.code in _AUTHORIZATION_ERRORS:
+        raise HTTPException(status_code=403, detail={"code": exc.code}) from None
+    if exc.code in {"identity_not_found", "session_not_found"}:
+        raise HTTPException(status_code=404, detail={"code": exc.code}) from None
+    raise HTTPException(status_code=422, detail={"code": exc.code}) from None

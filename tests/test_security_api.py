@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -18,3 +19,34 @@ def test_security_context_fails_closed_when_oidc_is_not_configured():
 
     assert response.status_code == 503
     assert response.json() == {"detail": "La autenticación segura no está configurada"}
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            "/api/v1/security/invitations",
+            {
+                "email": "synthetic@example.test",
+                "role": "CONSULTORA_CAPTURISTA",
+                "tenant_id": "00000000-0000-0000-0000-000000000001",
+                "all_modules": True,
+                "all_branches": True,
+                "reason": "Prueba sintética",
+            },
+        ),
+        (
+            "/api/v1/security/identities/00000000-0000-0000-0000-000000000001/suspend",
+            {"reason": "Prueba sintética"},
+        ),
+        (
+            "/api/v1/security/sessions/00000000-0000-0000-0000-000000000001/revoke",
+            {"reason": "Prueba sintética"},
+        ),
+    ],
+)
+def test_lifecycle_endpoints_require_authentication(path, payload):
+    response = TestClient(app).post(path, json=payload)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Autenticación requerida"}

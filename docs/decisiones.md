@@ -149,3 +149,17 @@ Estado: primera migración implementada el 2026-08-31.
 Las identidades, sesiones, tenants, asignaciones y auditoría de seguridad se almacenan en una base PostgreSQL diferente de los datos financieros. El plano de control no puede contener facturas, ventas, nómina, inventarios, recetas, archivos ni métricas financieras.
 
 La implementación y sus pendientes se documentan en `docs/seguridad/implementacion-01-cimentacion.md`.
+
+## D-019 — Primer director mediante instalación de un solo uso
+
+Estado: implementada en rama el 2026-08-31; pendiente de ejecución real.
+
+El primer director no se crea desde una ruta pública ni mediante contraseña de fábrica. Un comando fuera de línea genera una credencial aleatoria de 30 minutos, conserva únicamente su resumen y la consume al registrar una identidad nominativa con dos referencias distintas de llaves físicas.
+
+## D-020 — Revocación inmediata mediante estado y sello de seguridad
+
+Estado: implementada en rama el 2026-08-31.
+
+Suspender una identidad rota su sello de seguridad, revoca todas sus sesiones, suspende sus asignaciones y cancela invitaciones pendientes en una sola transacción. Las sesiones propias pueden revocarse sin privilegios globales; revocar sesiones ajenas continúa siendo una acción administrativa C2.
+
+Los detalles se conservan en `docs/seguridad/implementacion-02-ciclo-identidades.md`.
