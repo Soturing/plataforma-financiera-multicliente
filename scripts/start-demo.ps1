@@ -9,6 +9,7 @@ $startupLog = Join-Path $logDirectory "startup-demo.log"
 $uvicornOut = Join-Path $logDirectory "uvicorn.stdout.log"
 $uvicornErr = Join-Path $logDirectory "uvicorn.stderr.log"
 $pythonExe = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$environmentFile = Join-Path $projectRoot ".env"
 $dockerDesktop = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 $healthUrl = "http://127.0.0.1:8000/health"
 $appUrl = "http://127.0.0.1:8000/"
@@ -29,6 +30,109 @@ function Test-DemoHealth {
     catch {
         return $false
     }
+}
+
+function New-LocalSecret {
+    $bytes = New-Object byte[] 48
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $generator.GetBytes($bytes)
+    }
+    finally {
+        $generator.Dispose()
+    }
+    return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function Get-ContainerEnvironmentValue {
+    param(
+        [string]$ContainerName,
+        [string]$VariableName
+    )
+
+    $container = & docker ps -a --filter "name=^/$ContainerName$" --format "{{.Names}}" 2>$null
+    if ($LASTEXITCODE -ne 0 -or $container -ne $ContainerName) {
+        return $null
+    }
+
+    $entries = @(& docker inspect --format "{{range .Config.Env}}{{println .}}{{end}}" $ContainerName 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+    $prefix = "$VariableName="
+    $entry = $entries | Where-Object { $_.StartsWith($prefix) } | Select-Object -First 1
+    if (-not $entry) {
+        return $null
+    }
+    return $entry.Substring($prefix.Length)
+}
+
+function Ensure-LocalEnvironment {
+    $existingLines = @()
+    if (Test-Path -LiteralPath $environmentFile) {
+        $existingLines = @(Get-Content -LiteralPath $environmentFile)
+    }
+
+    $values = @{}
+    foreach ($line in $existingLines) {
+        if ($line -match '^\s*([^#=\s]+)\s*=(.*)$') {
+            $values[$matches[1]] = $matches[2]
+        }
+    }
+
+    $newLines = New-Object System.Collections.Generic.List[string]
+    if (-not $values.ContainsKey('POSTGRES_PASSWORD') -or -not $values['POSTGRES_PASSWORD']) {
+        $dataPassword = Get-ContainerEnvironmentValue `
+            -ContainerName 'factaut-postgres-1' `
+            -VariableName 'POSTGRES_PASSWORD'
+        if (-not $dataPassword) {
+            $dataPassword = New-LocalSecret
+        }
+        $values['POSTGRES_PASSWORD'] = $dataPassword
+        $newLines.Add("POSTGRES_PASSWORD=$dataPassword")
+    }
+
+    if (-not $values.ContainsKey('FACTURAS_DATABASE_URL') -or -not $values['FACTURAS_DATABASE_URL']) {
+        $encodedDataPassword = [Uri]::EscapeDataString($values['POSTGRES_PASSWORD'])
+        $newLines.Add("FACTURAS_DATABASE_URL=postgresql://facturas_app:$encodedDataPassword@localhost:5432/facturas_demo")
+    }
+
+    if (-not $values.ContainsKey('CONTROL_POSTGRES_PASSWORD') -or -not $values['CONTROL_POSTGRES_PASSWORD']) {
+        $controlPassword = New-LocalSecret
+        $values['CONTROL_POSTGRES_PASSWORD'] = $controlPassword
+        $newLines.Add("CONTROL_POSTGRES_PASSWORD=$controlPassword")
+    }
+
+    if (-not $values.ContainsKey('FACTURAS_CONTROL_DATABASE_URL') -or -not $values['FACTURAS_CONTROL_DATABASE_URL']) {
+        $encodedControlPassword = [Uri]::EscapeDataString($values['CONTROL_POSTGRES_PASSWORD'])
+        $newLines.Add("FACTURAS_CONTROL_DATABASE_URL=postgresql://control_owner:$encodedControlPassword@localhost:5433/facturas_control")
+    }
+
+    if ($newLines.Count -eq 0) {
+        return
+    }
+
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    if ($existingLines.Count -eq 0) {
+        $contents = @(
+            '# Configuracion local generada automaticamente. No versionar.',
+            'POSTGRES_DB=facturas_demo',
+            'POSTGRES_USER=facturas_app',
+            'POSTGRES_PORT=5432',
+            'CONTROL_POSTGRES_DB=facturas_control',
+            'CONTROL_POSTGRES_USER=control_owner',
+            'CONTROL_POSTGRES_PORT=5433'
+        ) + $newLines
+        [IO.File]::WriteAllLines($environmentFile, $contents, $utf8)
+    }
+    else {
+        [IO.File]::AppendAllLines(
+            $environmentFile,
+            @('', '# Variables de seguridad agregadas por el iniciador local.') + $newLines,
+            $utf8
+        )
+    }
+    Write-StartupLog "Configuracion local segura creada o completada."
 }
 
 try {
@@ -59,6 +163,8 @@ try {
         if (-not $dockerReady) {
             throw "Docker no estuvo disponible despues de 120 segundos."
         }
+
+        Ensure-LocalEnvironment
 
         Push-Location $projectRoot
         try {
