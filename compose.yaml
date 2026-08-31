@@ -1,4 +1,21 @@
 services:
+  control-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${CONTROL_POSTGRES_DB:-facturas_control}
+      POSTGRES_USER: ${CONTROL_POSTGRES_USER:-control_owner}
+      POSTGRES_PASSWORD: ${CONTROL_POSTGRES_PASSWORD:?Define CONTROL_POSTGRES_PASSWORD en el archivo .env local}
+    ports:
+      - "${CONTROL_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - control_postgres_data:/var/lib/postgresql/data
+      - ./control/migrations/001_control_plane.sql:/docker-entrypoint-initdb.d/10-control-plane.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CONTROL_POSTGRES_USER:-control_owner} -d ${CONTROL_POSTGRES_DB:-facturas_control}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -40,4 +57,5 @@ services:
       retries: 10
 
 volumes:
+  control_postgres_data:
   postgres_data:

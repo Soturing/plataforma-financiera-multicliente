@@ -1,7 +1,7 @@
 # Diseño de seguridad
 
-Estado general: dirección aprobada; todavía no implementada.
-Última actualización: 2026-08-30.
+Estado general: dirección aprobada; implementación en curso.
+Última actualización: 2026-08-31.
 
 Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la construcción del sistema de usuarios, roles y aislamiento multi-tenant.
 
@@ -16,6 +16,10 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 7. [Ciclo de vida de usuarios](ciclo-vida-usuarios.md)
 8. [Arquitectura de aislamiento multi-tenant](arquitectura-aislamiento.md)
 9. [Política de repositorio y control de versiones](politica-repositorio.md)
+
+## Avance de construcción
+
+- [Implementación 01 — Cimentación de seguridad](implementacion-01-cimentacion.md)
 
 ## Regla de implementación
 

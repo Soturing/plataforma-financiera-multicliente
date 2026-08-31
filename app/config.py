@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     app_name: str = "Facturación IA"
     environment: str = "development"
     database_url: str
+    control_database_url: str | None = None
+    oidc_issuer: str | None = None
+    oidc_audience: str | None = None
+    oidc_jwks_url: str | None = None
+    oidc_identity_provider: str | None = None
+    oidc_auth_level_claim: str | None = None
     upload_dir: Path = Path("data/uploads")
     max_upload_bytes: int = 40 * 1024 * 1024
     max_pdf_pages: int = 200

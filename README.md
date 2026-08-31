@@ -1,6 +1,6 @@
-# Facturación IA — Demo v0.1
+# Plataforma financiera multicliente
 
-Prototipo auditable de una plataforma financiera multicliente. El repositorio utiliza exclusivamente organizaciones, proveedores e importes sintéticos.
+Producto financiero multicliente en construcción, con una demo operativa y una cimentación de seguridad separada. El repositorio utiliza exclusivamente organizaciones, proveedores e importes sintéticos.
 
 ## Objetivo de la demo
 
@@ -29,14 +29,14 @@ Requisito: PostgreSQL 15 o posterior. Docker Desktop con Compose es la opción r
 
 ```powershell
 Copy-Item .env.example .env
-# Edite .env y sustituya CAMBIAR_POR_UN_SECRETO_LOCAL por un secreto aleatorio.
+# Edite .env y sustituya ambos secretos de ejemplo por valores aleatorios diferentes.
 docker compose up -d
 docker compose ps
 ```
 
 Si la instalación local utiliza el ejecutable clásico, sustituir `docker compose` por `docker-compose`.
 
-PostgreSQL quedará disponible en `localhost:5432`. Las migraciones y semillas dentro de `db/` se ejecutan al crear el volumen por primera vez.
+El data plane de demostración quedará en `localhost:5432` y el plano de control, sin información financiera, en `localhost:5433`. Sus migraciones se ejecutan al crear cada volumen por primera vez.
 
 ### Prueba del pipeline
 
@@ -63,9 +63,9 @@ La periodicidad puede recordarse por proveedor y subcategoría para sugerirla au
 
 Las facturas aprobadas pueden editarse desde Analytics o desde el buscador por número. Cada guardado crea una nueva versión, conserva las correcciones en auditoría y reemplaza el movimiento vigente sin duplicarlo. También puede desactivarse su impacto financiero mediante la casilla `Esta factura genera gasto en Analytics`.
 
-## Próximo incremento
+## Incremento actual
 
-Evaluar proveedores de OCR e IA después de validar el flujo con documentos sintéticos.
+La construcción del sistema de identidad, tenants y autorización ya comenzó. Consulte [docs/seguridad/implementacion-01-cimentacion.md](docs/seguridad/implementacion-01-cimentacion.md) para ver lo implementado, la evidencia y los bloqueos que todavía impiden usar la demo en producción.
 
 ## Backend FastAPI
 

@@ -17,6 +17,7 @@ from psycopg import Connection
 from app.config import Settings, get_settings
 from app.database import get_connection
 from app.errors import DomainError
+from app.security.api import router as security_router
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
 from app.financial_reports import (
@@ -121,6 +122,7 @@ app = FastAPI(
     description="Backend auditable para la demo de procesamiento de facturas.",
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(security_router)
 
 
 @app.middleware("http")

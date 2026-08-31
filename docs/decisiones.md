@@ -133,3 +133,19 @@ Se adopta un plano de control compartido que no almacena información financiera
 Los reportes globales consultan APIs internas de sólo lectura y reciben métricas agregadas; no se crea una base central permanente con los datos de todos los clientes.
 
 La definición completa se conserva en `docs/seguridad/arquitectura-aislamiento.md`.
+
+## D-017 — Autenticación mediante proveedor OIDC y passkeys
+
+Estado: adoptada e iniciada el 2026-08-31.
+
+La aplicación no almacenará contraseñas ni implementará WebAuthn directamente. Un proveedor de identidad maduro administrará passkeys y llaves físicas. El backend aceptará únicamente tokens OIDC firmados, con algoritmo asimétrico permitido explícitamente, emisor, audiencia, expiración, fecha de emisión, fecha de autenticación y sesión verificadas.
+
+Los roles y asignaciones no se confían al token: se consultan en el plano de control para que una revocación tenga efecto inmediato.
+
+## D-018 — Base separada para el plano de control
+
+Estado: primera migración implementada el 2026-08-31.
+
+Las identidades, sesiones, tenants, asignaciones y auditoría de seguridad se almacenan en una base PostgreSQL diferente de los datos financieros. El plano de control no puede contener facturas, ventas, nómina, inventarios, recetas, archivos ni métricas financieras.
+
+La implementación y sus pendientes se documentan en `docs/seguridad/implementacion-01-cimentacion.md`.
