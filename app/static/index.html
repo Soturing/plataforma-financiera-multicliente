@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plataforma Financiera</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260829-9">
+</head>
+<body>
+  <header class="topbar">
+    <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Abrir navegación" aria-expanded="false">☰</button>
+    <a class="brand" href="#/" aria-label="Plataforma Financiera · Ir al inicio">
+      <span class="brand-mark" aria-hidden="true">PF</span>
+    </a>
+    <div class="topbar-context"><small>Sección actual</small><strong id="current-section">Operación</strong></div>
+    <div class="topbar-actions">
+      <span id="system-status" class="status-dot"><i></i> Verificando</span>
+      <label class="user-field"><span>Operador</span><input id="operator" value="capturista-demo" autocomplete="name"></label>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+      <nav class="side-nav">
+        <p class="nav-label">Operación</p>
+        <a href="#/" data-route="home"><span class="nav-icon">⌂</span><span><strong>Inicio</strong><small>Resumen y guía</small></span></a>
+        <a href="#/bandeja" data-route="dashboard"><span class="nav-icon">▦</span><span><strong>Bandeja</strong><small>Revisar documentos</small></span></a>
+        <a href="#/archivo" data-route="archive"><span class="nav-icon">⌕</span><span><strong>Archivo</strong><small>Buscar documentos</small></span></a>
+        <a href="#/recibos" data-route="receipts"><span class="nav-icon">＋</span><span><strong>Comprobantes</strong><small>Gastos sin CFDI</small></span></a>
+        <p class="nav-label">Finanzas</p>
+        <a href="#/finanzas" data-route="finance"><span class="nav-icon">▤</span><span><strong>Resultados</strong><small>Semana y utilidad</small></span></a>
+        <a href="#/reportes" data-route="reports"><span class="nav-icon">▥</span><span><strong>Reportes financieros</strong><small>Mensual y comparativos</small></span></a>
+        <a href="#/analytics" data-route="analytics"><span class="nav-icon">↗</span><span><strong>Análisis</strong><small>Gastos y tendencias</small></span></a>
+        <p class="nav-label">Configuración</p>
+        <a href="#/catalogos" data-route="catalogs"><span class="nav-icon">⚙</span><span><strong>Catálogos</strong><small>Proveedores y reglas</small></span></a>
+      </nav>
+      <div class="sidebar-help"><span>Captura rápida</span><button class="button primary" id="sidebar-upload" type="button">＋ Cargar documentos</button></div>
+    </aside>
+    <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="Cerrar navegación"></button>
+    <main id="app" aria-live="polite"></main>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+
+  <template id="home-template">
+    <section class="page home-page">
+      <section class="welcome-hero">
+        <div class="welcome-copy">
+          <p class="welcome-kicker">CONTROL FINANCIERO · ENTORNO DEMO</p>
+          <h1>Bienvenido, <span>Usuario</span></h1>
+          <p>Todo está listo para convertir documentos en información financiera clara.</p>
+          <div class="welcome-actions">
+            <a class="button primary" href="#/bandeja">Ir a documentos por revisar</a>
+            <button class="button welcome-secondary" id="show-quick-guide" type="button">Ver guía rápida</button>
+          </div>
+        </div>
+        <div class="welcome-mark" aria-hidden="true"><span>PF</span></div>
+      </section>
+
+      <section class="home-status" aria-label="Resumen de operación">
+        <article><span id="home-pending">—</span><div><strong>Por revisar</strong><small>Documentos pendientes</small></div></article>
+        <article><span id="home-invoices">—</span><div><strong>Facturas</strong><small>Pendientes de validación</small></div></article>
+        <article><span id="home-other">—</span><div><strong>Otros documentos</strong><small>Fuera del flujo fiscal</small></div></article>
+      </section>
+
+      <section class="home-grid">
+        <article class="home-card home-card-featured">
+          <span class="home-card-icon">＋</span>
+          <div><p class="eyebrow">EMPEZAR</p><h2>Carga y procesa documentos</h2><p>Sube PDF, imágenes o XML. El sistema identifica el tipo, extrae datos y prepara la revisión.</p></div>
+          <a href="#/bandeja">Abrir bandeja →</a>
+        </article>
+        <article class="home-card">
+          <span class="home-card-icon">▤</span>
+          <div><p class="eyebrow">FINANZAS</p><h2>Consulta tus resultados</h2><p>Revisa ventas, gastos, utilidad y punto de equilibrio por semana o sucursal.</p></div>
+          <a href="#/finanzas">Ver Estado de Resultados →</a>
+        </article>
+        <article class="home-card">
+          <span class="home-card-icon">⌕</span>
+          <div><p class="eyebrow">ARCHIVO</p><h2>Encuentra un documento</h2><p>Busca por folio, proveedor, fecha, estado o sucursal sin recorrer la bandeja.</p></div>
+          <a href="#/archivo">Buscar en el archivo →</a>
+        </article>
+      </section>
+
+      <section id="guia-rapida" class="quick-guide panel">
+        <div class="panel-title"><div><p class="eyebrow">GUÍA DE USO</p><h2>Un flujo sencillo en tres pasos</h2><p>La ruta recomendada para mantener la información al día.</p></div></div>
+        <ol>
+          <li><span>1</span><div><strong>Carga</strong><p>Agrega uno o varios documentos desde la bandeja.</p></div></li>
+          <li><span>2</span><div><strong>Revisa</strong><p>Confirma proveedor, sucursal, clasificación e importes extraídos.</p></div></li>
+          <li><span>3</span><div><strong>Consulta</strong><p>Los documentos aprobados alimentan análisis, reportes y resultados.</p></div></li>
+        </ol>
+        <div class="quick-guide-footer"><a class="button ghost" href="#/bandeja">Comenzar ahora</a><a href="#/catalogos">Configurar proveedores y reglas</a></div>
+      </section>
+    </section>
+  </template>
+
+  <template id="dashboard-template">
+    <section class="page dashboard">
+      <div class="page-heading">
+        <div><p class="eyebrow">OPERACIÓN DE HOY</p><h1>Documentos por revisar</h1><p>Clasificación y extracción automática con evidencia del original.</p></div>
+        <div class="heading-actions">
+          <a class="button ghost" href="#/finanzas">Estado de resultados</a>
+          <a class="button ghost" href="#/catalogos">Catálogo y aprendizaje</a>
+          <a class="button ghost" href="#/recibos">＋ Crear recibo</a>
+          <button class="button primary" id="open-upload">＋ Cargar documentos</button>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <article><span id="metric-pending">—</span><p>Pendientes</p></article>
+        <article><span id="metric-invoices">—</span><p>Facturas fiscales</p></article>
+        <article><span id="metric-payments">—</span><p>Complementos de pago</p></article>
+        <article><span id="metric-other">—</span><p>No contabilizables</p></article>
+      </div>
+
+      <section id="upload-panel" class="upload-modal hidden" role="dialog" aria-modal="true" aria-labelledby="upload-title">
+        <div class="upload-dialog panel">
+        <div class="panel-title"><div><h2 id="upload-title">Cargar documentos</h2><p>Selecciona hasta 100 PDF, imágenes o XML CFDI · máximo 40 MB por archivo</p></div><button class="icon-button" id="close-upload" type="button" aria-label="Cerrar">×</button></div>
+        <form id="upload-form">
+          <div class="form-grid">
+            <div><label class="file-drop" id="upload-dropzone" tabindex="0"><input type="file" name="archivo" accept="image/jpeg,image/png,image/webp,application/pdf,.xml,application/xml,text/xml" multiple required><span>Arrastra archivos aquí o haz clic para agregarlos</span><small id="file-name">Puedes volver a hacer clic para sumar más archivos</small></label><div id="upload-file-list" class="upload-file-list" aria-live="polite"></div></div>
+            <label>Sucursal<select name="sucursal_clave" id="upload-branch" required></select></label>
+          </div>
+          <label class="check-row hidden"><input type="checkbox" id="split-pdf" checked><span>Separar automáticamente una factura por página (recomendado)</span></label>
+          <details class="demo-data hidden" id="demo-data">
+            <summary>Datos simulados para esta etapa</summary>
+            <div class="form-grid three">
+              <label>Proveedor<input name="proveedor" value="Proveedor Ficticio Base" required></label>
+              <label>Fecha<input type="date" name="fecha_emision" value="2026-08-07" required></label>
+              <label>Subtotal<input type="number" step="0.01" name="subtotal" value="10000.00" required></label>
+              <label>IVA<input type="number" step="0.01" name="iva" value="1600.00" required></label>
+              <label>Total<input type="number" step="0.01" name="total" value="11600.00" required></label>
+            </div>
+          </details>
+          <div class="form-actions"><button type="button" class="button ghost" id="cancel-upload">Cancelar</button><button class="button primary" type="submit">Cargar y procesar</button></div>
+        </form>
+        </div>
+      </section>
+
+      <section id="duplicates-panel" class="panel duplicates-panel hidden">
+        <div class="panel-title">
+          <div><h2>Duplicados identificados</h2><p>Revise las coincidencias antes de descartarlas. El documento original no se modifica.</p></div>
+          <button class="button danger small" id="discard-all-duplicates" type="button">Eliminar identificados</button>
+        </div>
+        <div id="duplicates" class="duplicates"></div>
+      </section>
+
+      <section class="panel batches-panel">
+        <div class="panel-title"><div><h2>Lotes recientes</h2><p>PDF multipágina y avance por documento</p></div></div>
+        <div id="batches" class="batches"></div>
+      </section>
+
+      <section class="panel queue-panel">
+        <div class="panel-title"><div><h2>Bandeja de revisión</h2><p id="queue-caption">Cargando facturas…</p></div><div class="panel-title-actions"><button class="button ghost small" id="refresh-queue">Actualizar</button><button class="button primary small" id="start-review" type="button" disabled>Comenzar revisión</button></div></div>
+        <form id="queue-filters" class="queue-filters">
+          <label>Proveedor<input id="queue-provider" type="search" placeholder="Buscar por nombre" autocomplete="off"></label>
+          <label>Tipo de documento<select id="queue-type">
+            <option value="">Todos</option>
+            <option value="factura_fiscal">Solo facturas fiscales</option>
+            <option value="ticket_compra">Tickets de compra</option>
+            <option value="nota_venta">Notas de venta</option>
+            <option value="remision">Remisiones</option>
+            <option value="recibo">Recibos</option>
+            <option value="gastos">Todos los que generan gasto</option>
+            <option value="comprobante_pago">Comprobantes de pago</option>
+            <option value="no_contabilizables">No contabilizables</option>
+            <option value="desconocido">Sin clasificar</option>
+          </select></label>
+          <label>Sucursal<select id="queue-branch"><option value="">Todas</option></select></label>
+          <label>Ordenar por<select id="queue-order">
+            <option value="prioridad">Prioridad de revisión</option>
+            <option value="recientes">Más recientes</option>
+            <option value="antiguas">Más antiguas</option>
+            <option value="proveedor_az">Proveedor A–Z</option>
+            <option value="proveedor_za">Proveedor Z–A</option>
+            <option value="total_mayor">Total mayor a menor</option>
+            <option value="total_menor">Total menor a mayor</option>
+          </select></label>
+          <button id="clear-queue-filters" class="button ghost small" type="button">Limpiar</button>
+        </form>
+        <div id="queue-selection-bar" class="queue-selection-bar hidden">
+          <label><input id="queue-select-all" type="checkbox"><span>Seleccionar todos los visibles</span></label>
+          <span id="queue-selected-count">0 seleccionados</span>
+          <button id="delete-selected-documents" class="button danger small" type="button" disabled>Eliminar seleccionados</button>
+        </div>
+        <div id="queue" class="queue"></div>
+      </section>
+    </section>
+  </template>
+
+  <template id="archive-template">
+    <section class="page archive-page">
+      <div class="page-heading">
+        <div><p class="eyebrow">ARCHIVO DOCUMENTAL</p><h1>Buscar documentos</h1><p>Localiza facturas, notas, tickets y comprobantes por referencia, proveedor, fecha o sucursal.</p></div>
+      </div>
+
+      <section class="panel archive-search-panel">
+        <form id="archive-search-form" class="archive-search-form">
+          <label class="archive-query">Número, proveedor o archivo<input id="archive-query" type="search" placeholder="Ej. A-92831, Proveedor Ficticio Base o CamScanner" autocomplete="off"></label>
+          <label>Estado<select id="archive-status"><option value="aprobada">Aprobados</option><option value="requiere_revision">En revisión</option><option value="rechazada">Rechazados</option><option value="todos">Todos</option></select></label>
+          <label>Sucursal<select id="archive-branch"><option value="">Todas</option></select></label>
+          <label>Desde<input id="archive-date-from" type="date"></label>
+          <label>Hasta<input id="archive-date-to" type="date"></label>
+          <div class="archive-search-actions">
+            <button class="button primary" type="submit">Buscar</button>
+            <button class="button ghost" id="clear-archive-search" type="button">Limpiar</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel archive-results-panel">
+        <div class="panel-title"><div><h2 id="archive-results-title">Últimos 20 documentos aprobados</h2><p id="archive-results-caption">Actividad aprobada más reciente.</p></div><span id="archive-result-count" class="badge success">—</span></div>
+        <div id="archive-results" class="archive-results"><div class="empty">Cargando archivo…</div></div>
+      </section>
+    </section>
+  </template>
+
+  <template id="receipts-template">
+    <section class="page receipts-page">
+      <div class="page-heading receipts-heading">
+        <div>
+          <a href="#/" class="back-link">← Operación</a>
+          <p class="eyebrow">PROVEEDORES INFORMALES</p>
+          <h1>Comprobantes internos</h1>
+          <p>Registra un gasto sin CFDI, conserva la evidencia y envíalo a autorización.</p>
+        </div>
+        <button class="button primary" id="toggle-receipt-form">＋ Nuevo recibo</button>
+      </div>
+
+      <div class="receipt-policy">
+        <strong>Control interno · no sustituye un CFDI</strong>
+        <span>Una autorización para cualquier monto · Máximo $300,000</span>
+      </div>
+
+      <section id="receipt-form-panel" class="panel receipt-form-panel">
+        <div class="panel-title">
+          <div><h2>Nuevo comprobante</h2><p>Los campos marcados son necesarios para llevar el gasto a Analytics.</p></div>
+          <button class="icon-button" id="close-receipt-form" aria-label="Cerrar">×</button>
+        </div>
+        <form id="receipt-form">
+          <details class="receipt-section" open>
+            <summary>1 · Proveedor</summary><fieldset>
+            <div class="receipt-grid">
+              <label class="span-two">Nombre del proveedor *<input name="proveedor_nombre" list="informal-provider-options" required maxlength="250" placeholder="Ej. Abarrotes Lupita"><datalist id="informal-provider-options"></datalist></label>
+              <label class="span-two">Número de factura, nota o ticket<input name="numero_documento" maxlength="100" placeholder="Si no existe, se usará la fecha DDMMYYYY"><small>Referencia principal para encontrar este archivo.</small></label>
+              <label>Teléfono (opcional)<input name="proveedor_telefono" inputmode="tel" placeholder="999 000 0000"></label>
+              <label>Giro (opcional)<input name="proveedor_giro" placeholder="Abarrotes, mantenimiento…"></label>
+            </div>
+          </fieldset></details>
+
+          <details class="receipt-section">
+            <summary>2 · Gasto</summary><fieldset>
+            <div class="receipt-grid">
+              <label>Fecha *<input type="date" name="fecha_gasto" required></label>
+              <label>Método de pago *<select name="metodo_pago" required><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option><option value="otro">Otro</option></select></label>
+              <label class="amount-field">Total MXN *<input type="number" name="total" min="0.01" max="300000" step="0.01" inputmode="decimal" required placeholder="0.00"><small id="approval-hint">Indica el monto para calcular la autorización.</small></label>
+              <label class="span-two">Concepto *<textarea name="concepto" rows="3" maxlength="1000" required placeholder="Qué se compró y para qué se utilizó"></textarea></label>
+            </div>
+          </fieldset></details>
+
+          <details class="receipt-section">
+            <summary>3 · Clasificación</summary><fieldset>
+            <div class="receipt-grid">
+              <label>Sucursal principal *<select name="sucursal_clave" id="receipt-branch" required></select></label>
+              <label>Categoría *<select name="categoria_id" id="receipt-category" required></select></label>
+              <label>Subcategoría (opcional)<select name="subcategoria_id" id="receipt-subcategory"></select></label>
+              <label>Centro de costo *<select name="centro_costo_id" id="receipt-cost-center" required></select></label>
+              <label>Rol de quien captura *<select name="rol_creador" required><option value="capturista">Capturista</option><option value="gerente">Gerente</option></select></label>
+            </div>
+          </fieldset></details>
+
+          <details id="receipt-periodification-panel" class="receipt-section periodification-panel hidden">
+            <summary>4 · Distribución semanal del gasto fijo</summary><fieldset>
+            <p class="field-help">El comprobante conserva el total; el Estado de Resultados recibe una parte en cada semana del periodo.</p>
+            <div class="receipt-grid">
+              <label>Periodicidad<select id="receipt-period-type"><option value="una_semana">Una sola semana</option><option value="mensual">Mensual</option><option value="bimestral">Bimestral</option><option value="personalizado">Periodo personalizado</option></select></label>
+              <label>Desde<input id="receipt-period-from" type="date"></label>
+              <label>Hasta<input id="receipt-period-to" type="date"></label>
+            </div>
+            <div id="receipt-period-preview" class="period-preview"></div>
+            <label class="check-row"><input type="checkbox" id="receipt-remember-period"><span>Recordar esta periodicidad para próximos gastos del proveedor</span></label>
+          </fieldset></details>
+
+          <details id="cash-signature-panel" class="receipt-section">
+            <summary>5 · Firma del proveedor</summary><fieldset>
+            <p class="field-help">Obligatoria cuando el pago se hizo en efectivo.</p>
+            <div class="receipt-grid">
+              <label class="span-two">Nombre de quien recibe<input name="firma_proveedor_nombre" maxlength="250" placeholder="Nombre completo"></label>
+            </div>
+            <label class="check-row"><input type="checkbox" name="firma_proveedor_confirmada" value="true"><span>Confirmo que el proveedor firmó o aceptó este recibo</span></label>
+          </fieldset></details>
+
+          <details class="receipt-section">
+            <summary>6 · Evidencia opcional</summary><fieldset>
+            <label class="file-drop compact"><input type="file" name="evidencia" accept="image/jpeg,image/png,image/webp,application/pdf"><span>Anexar foto, nota o PDF</span><small>No es obligatoria para guardar el recibo.</small></label>
+          </fieldset></details>
+
+          <div class="receipt-submit-bar">
+            <span id="receipt-submit-summary">Se guardará pendiente de autorización.</span>
+            <button class="button primary" type="submit">Generar recibo</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel receipts-list-panel">
+        <div class="panel-title"><div><h2>Recibos recientes</h2><p>Seguimiento de autorización y condición fiscal.</p></div><button class="button ghost small" id="refresh-receipts">Actualizar</button></div>
+        <div id="receipts-list" class="receipts-list"></div>
+      </section>
+    </section>
+  </template>
+
+  <template id="analytics-template">
+    <section class="page analytics-page">
+      <div class="page-heading analytics-heading">
+        <div>
+          <a href="#/" class="back-link">← Operación</a>
+          <p class="eyebrow">ANALYTICS DEMO</p>
+          <h1>Análisis de gastos</h1>
+          <p>Información consolidada para dirección, separada del procesamiento OCR.</p>
+        </div>
+        <div class="analytics-actions">
+          <label>Vista<select id="analytics-scope"><option value="aprobado">Solo aprobado</option><option value="preliminar">Preliminar · incluye pendientes</option></select></label>
+          <a id="analytics-export" class="button ghost" href="/api/v1/analytics/exportar.csv">Descargar para Excel</a>
+        </div>
+      </div>
+
+      <section class="analytics-filters" aria-label="Filtros del análisis">
+        <label>Tipo de periodo<select id="analytics-period-mode"><option value="iso">Semana ISO</option><option value="range">Entre dos fechas</option></select></label>
+        <div id="analytics-iso-fields" class="period-fields">
+          <label>Año ISO<input id="analytics-iso-year" type="number" min="2000" max="2100"></label>
+          <label>Semana<input id="analytics-iso-week" type="number" min="1" max="53"></label>
+        </div>
+        <div id="analytics-date-fields" class="period-fields hidden">
+          <label>Desde<input id="analytics-date-from" type="date"></label>
+          <label>Hasta<input id="analytics-date-to" type="date"></label>
+        </div>
+        <label>Categoría<select id="analytics-category"><option value="">Todas</option><option value="FIJOS">Fijos</option><option value="VARIABLES">Variables</option></select></label>
+        <button id="analytics-apply" class="button primary" type="button">Aplicar filtros</button>
+      </section>
+
+      <div id="analytics-scope-note" class="scope-note"></div>
+
+      <div class="metrics analytics-metrics">
+        <article><span id="analysis-total">—</span><p>Gasto total</p></article>
+        <article><span id="analysis-invoices">—</span><p>Movimientos</p></article>
+        <article><span id="analysis-ticket">—</span><p>Ticket promedio</p></article>
+        <article><span id="analysis-pending">—</span><p>Pendientes de revisión</p></article>
+      </div>
+
+      <div class="analytics-grid">
+        <section class="panel analysis-panel">
+          <div class="panel-title"><div><h2>Gasto por categoría</h2><p>Distribución contable del periodo</p></div></div>
+          <div id="category-chart" class="bar-chart"></div>
+        </section>
+        <section class="panel analysis-panel">
+          <div class="panel-title"><div><h2>Principales proveedores</h2><p>Ordenados por importe acumulado</p></div></div>
+          <div id="provider-chart" class="bar-chart"></div>
+        </section>
+        <section class="panel analysis-panel analytics-wide">
+          <div class="panel-title"><div><h2>Tendencia diaria</h2><p>Importe de facturas por fecha de emisión</p></div></div>
+          <div id="daily-chart" class="daily-chart"></div>
+        </section>
+        <section class="panel analysis-panel analytics-wide">
+          <div class="panel-title"><div><h2>Movimientos recientes</h2><p>Detalle listo para auditoría y exportación</p></div></div>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead><tr><th>Fecha</th><th>Proveedor</th><th>Categoría</th><th>Restaurante</th><th>Estado</th><th class="numeric">Total</th><th>Acción</th></tr></thead>
+              <tbody id="analytics-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  </template>
+
+  <template id="finance-template">
+    <section class="page finance-page">
+      <div class="page-heading finance-heading">
+        <div>
+          <a href="#/" class="back-link">← Operación</a>
+          <p class="eyebrow">DIRECCIÓN FINANCIERA</p>
+          <h1>Estado de Resultados semanal</h1>
+          <p>Ventas, costos variables, gastos fijos, utilidad operativa y punto de equilibrio.</p>
+        </div>
+        <div class="heading-actions">
+          <a class="button ghost" href="#/analytics">Ver detalle de gastos</a>
+          <a class="button primary" href="#/reportes">Reportes financieros</a>
+        </div>
+      </div>
+
+      <section class="analytics-filters finance-filters">
+        <label>Año ISO<input id="finance-year" type="number" min="2000" max="2100"></label>
+        <label>Semana<input id="finance-week" type="number" min="1" max="53"></label>
+        <label>Sucursal<select id="finance-branch"><option value="">Consolidado</option></select></label>
+        <button id="finance-apply" class="button primary" type="button">Actualizar</button>
+      </section>
+
+      <div class="metrics finance-metrics">
+        <article><span id="finance-sales">—</span><p>Ventas netas</p></article>
+        <article><span id="finance-variable">—</span><p>Costos variables</p></article>
+        <article><span id="finance-fixed">—</span><p>Gastos fijos</p></article>
+        <article><span id="finance-profit">—</span><p>Utilidad operativa</p></article>
+      </div>
+
+      <div class="finance-grid">
+        <section class="panel statement-panel">
+          <div class="panel-title"><div><h2>Estado de Resultados</h2><p id="finance-period-label">Periodo semanal</p></div></div>
+          <div id="income-statement" class="income-statement"></div>
+        </section>
+        <section class="panel break-even-panel">
+          <div class="panel-title"><div><h2>Punto de equilibrio</h2><p>Venta mínima para cubrir costos variables y gastos fijos.</p></div></div>
+          <div id="break-even-content" class="break-even-content"></div>
+        </section>
+        <details class="panel finance-wide expense-detail-panel collapsible-panel">
+          <summary class="panel-title"><div><h2>Desglose completo de gastos</h2><p>Abre para consultar los documentos y montos que integran la semana.</p></div><span class="expand-label">Ver desglose</span></summary>
+          <div id="finance-expense-detail" class="finance-expense-detail"></div>
+        </details>
+        <section class="panel finance-wide">
+          <div class="panel-title"><div><h2>Comparativo por sucursal</h2><p>La rentabilidad se calcula de manera independiente por unidad.</p></div></div>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table finance-table">
+              <thead><tr><th>Sucursal</th><th class="numeric">Ventas</th><th class="numeric">Variables</th><th class="numeric">Fijos</th><th class="numeric">Utilidad</th><th>Equilibrio</th></tr></thead>
+              <tbody id="finance-branch-rows"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel finance-wide">
+          <div class="panel-title"><div><h2>Evolución semanal</h2><p>Ventas y utilidad operativa de las últimas semanas disponibles.</p></div></div>
+          <div id="finance-trend" class="finance-trend"></div>
+        </section>
+        <details class="panel finance-wide sales-breakdown-panel collapsible-panel">
+          <summary class="panel-title"><div><h2>Desglose diario de ventas</h2><p>Abre para ver o capturar métodos de pago, familias, visitas y diferencias.</p></div><span class="expand-label">Ver desglose</span><span id="sales-edit-state" class="badge warning">Seleccione una sucursal</span></summary>
+          <div id="sales-scope-summary" class="sales-scope-summary"></div>
+          <div class="sales-image-import">
+            <div><strong>Importar ventas y gastos semanales</strong><small>El XLSX también detecta los gastos de Barra y Restaurante para incorporarlos al Estado de Resultados.</small></div>
+            <label class="file-drop compact"><input id="sales-image-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/png,image/jpeg,image/webp"><span>Seleccionar XLSX, PNG o JPG</span><small id="sales-image-name">Ningún archivo seleccionado</small></label>
+            <button id="analyze-sales-image" class="button ghost" type="button">Leer archivo</button>
+          </div>
+          <div id="sales-ocr-result" class="sales-ocr-result hidden"></div>
+          <section id="weekly-expenses-preview" class="weekly-expenses-preview hidden">
+            <div class="panel-title"><div><h3>Gastos encontrados en el archivo</h3><p>Desmarque cualquier fila que no deba sumarse. Los registros existentes no se duplicarán.</p></div><strong id="weekly-expenses-total"></strong></div>
+            <div class="analytics-table-wrap"><table class="analytics-table">
+              <thead><tr><th>Incluir</th><th>Área</th><th>Proveedor</th><th>Fecha</th><th>Descripción</th><th>Pago</th><th>No. factura</th><th class="numeric">Monto</th></tr></thead>
+              <tbody id="weekly-expenses-rows"></tbody>
+            </table></div>
+          </section>
+          <form id="sales-breakdown-form">
+            <div class="sales-sheet-wrap">
+              <table class="sales-sheet payment-sheet">
+                <thead><tr><th>Fecha</th><th>Efectivo</th><th>Dólares</th><th>Tipo cambio</th><th>Conversión</th><th>Rappi</th><th>Uber</th><th>Visa</th><th>Amex</th><th>Crédito</th><th>Venta neta</th></tr></thead>
+                <tbody id="sales-payment-rows"></tbody>
+                <tfoot id="sales-payment-total"></tfoot>
+              </table>
+            </div>
+            <div class="sales-sheet-wrap mix-wrap">
+              <table class="sales-sheet mix-sheet">
+                <thead><tr><th>Fecha</th><th>Otro</th><th>Aplicaciones</th><th>Alimentos</th><th>Bebidas</th><th>Total desglose</th><th>Diferencia</th><th>Faltante</th><th>Sobrante</th><th>Visitas</th><th>Ticket prom.</th></tr></thead>
+                <tbody id="sales-mix-rows"></tbody>
+                <tfoot id="sales-mix-total"></tfoot>
+              </table>
+            </div>
+            <div class="sales-save-bar"><span>La venta neta se recalcula con el desglose. Los gastos seleccionados se publicarán como movimientos sin CFDI.</span><button id="save-sales-breakdown" class="button primary" type="submit">Guardar ventas y gastos</button></div>
+          </form>
+        </details>
+      </div>
+    </section>
+  </template>
+
+  <template id="financial-reports-template">
+    <section class="page reports-page">
+      <div class="page-heading reports-heading">
+        <div>
+          <p class="eyebrow">DIRECCIÓN FINANCIERA</p>
+          <h1>Reportes financieros</h1>
+          <p>Construye cierres mensuales y comparaciones específicas sin modificar el Estado de Resultados semanal.</p>
+        </div>
+        <div class="heading-actions">
+          <a class="button ghost" href="#/finanzas">Volver al Estado de Resultados</a>
+        </div>
+      </div>
+
+      <section class="panel report-builder-panel">
+        <div class="panel-title report-builder-title">
+          <div><p class="eyebrow">REPORTE PRINCIPAL</p><h2>Generador gerencial</h2><p>El reporte mensual incluye comparación contra el mes anterior. También puedes elegir semanas y bloques concretos.</p></div>
+          <span class="badge success">Descargable en PDF</span>
+        </div>
+
+        <div class="report-builder-grid">
+          <div class="report-settings">
+            <div class="report-control-grid">
+              <label>Tipo de periodo<select id="report-period-mode"><option value="mensual">Reporte mensual</option><option value="semanas">Comparar semanas</option></select></label>
+              <label id="report-calendar-year-label">Año<input id="report-calendar-year" type="number" min="2000" max="2100"></label>
+              <label id="report-month-label">Mes<select id="report-month">
+                <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option><option value="4">Abril</option>
+                <option value="5">Mayo</option><option value="6">Junio</option><option value="7">Julio</option><option value="8">Agosto</option>
+                <option value="9">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+              </select></label>
+              <label>Sucursal<select id="report-branch"><option value="">Consolidado · tres unidades</option></select></label>
+            </div>
+
+            <section id="report-week-selector" class="report-week-selector hidden">
+              <div class="report-subheading"><div><strong>Semanas a comparar</strong><small>Selecciona entre 1 y 16 semanas del mismo año ISO. Se marcan las dos más recientes al entrar.</small></div><button id="report-select-available" class="button ghost small" type="button">Elegir últimas 16</button></div>
+              <div id="report-weeks" class="week-checklist"></div>
+            </section>
+
+            <section class="report-section-selector">
+              <div class="report-subheading"><div><strong>Contenido del PDF</strong><small>Desmarca cualquier bloque que no sea útil para esta lectura.</small></div><div><button id="report-select-all" class="text-button" type="button">Seleccionar todo</button><button id="report-clear-sections" class="text-button" type="button">Limpiar</button></div></div>
+              <div id="report-sections" class="report-section-checklist"></div>
+            </section>
+
+            <div class="report-actions">
+              <button id="report-preview-button" class="button ghost" type="button">Actualizar vista previa</button>
+              <button id="report-download-button" class="button primary" type="button">Descargar reporte PDF</button>
+            </div>
+          </div>
+
+          <aside id="report-preview" class="report-preview">
+            <div class="report-preview-empty"><strong>Preparando el reporte</strong><span>Elige el periodo para ver el alcance y los indicadores principales.</span></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel legacy-reports-panel">
+        <div class="panel-title"><div><p class="eyebrow">FORMATOS SEMANALES</p><h2>Reportes existentes</h2><p>Conserva los dos formatos actuales para cierres rápidos y operación de Compras.</p></div></div>
+        <div class="legacy-report-controls">
+          <label>Año ISO<input id="legacy-report-year" type="number" min="2000" max="2100"></label>
+          <label>Semana<input id="legacy-report-week" type="number" min="1" max="53"></label>
+          <label>Sucursal<select id="legacy-report-branch"><option value="">Consolidado</option></select></label>
+          <button id="legacy-financial-report" class="button report-button" type="button">Reporte financiero semanal</button>
+          <button id="legacy-purchase-report" class="button ghost" type="button">Reporte para Compras</button>
+          <button id="legacy-blank-report" class="text-button" type="button">Descargar plantilla vacía</button>
+        </div>
+      </section>
+    </section>
+  </template>
+
+  <template id="catalog-template">
+    <section class="page catalog-page">
+      <div class="page-heading">
+        <div>
+          <a href="#/" class="back-link">← Operación</a>
+          <p class="eyebrow">NORMALIZACIÓN Y APRENDIZAJE</p>
+          <h1>Catálogo de proveedores</h1>
+          <p>Una sola identidad por proveedor, con alias OCR y reglas contables versionadas.</p>
+        </div>
+        <div class="heading-actions">
+          <a class="button ghost" href="/api/v1/proveedores/plantilla">Descargar plantilla Excel</a>
+          <button class="button primary" id="new-provider">＋ Nuevo proveedor</button>
+        </div>
+      </div>
+
+      <div class="metrics catalog-metrics">
+        <article><span id="catalog-total">—</span><p>Proveedores activos</p></article>
+        <article><span id="catalog-aliases">—</span><p>Alias aprendidos</p></article>
+        <article><span id="catalog-issues">—</span><p>Registros por completar</p></article>
+        <article><span id="training-examples">—</span><p>Ejemplos aprobados</p></article>
+      </div>
+
+      <div class="catalog-layout">
+        <section class="panel catalog-editor-panel">
+          <div class="panel-title"><div><h2 id="provider-form-title">Nuevo proveedor</h2><p>RFC, nombre canónico, alias y clasificación sugerida.</p></div></div>
+          <form id="provider-form" class="catalog-form">
+            <input type="hidden" name="id">
+            <div class="catalog-form-grid">
+              <label>RFC<input name="rfc" maxlength="13" placeholder="Opcional para proveedor informal"></label>
+              <label>Razón social *<input name="razon_social" required maxlength="250"></label>
+              <label>Nombre normalizado *<input name="nombre_normalizado" required maxlength="250" placeholder="Nombre que verá el capturista"></label>
+              <label>Nombre comercial<input name="nombre_comercial" maxlength="250"></label>
+              <label>Categoría sugerida<select name="categoria" id="provider-category"><option value="">Sin regla</option></select></label>
+              <label>Subcategoría sugerida<select name="subcategoria" id="provider-subcategory"><option value="">Sin subcategoría</option></select></label>
+              <label>Centro de costo<select name="centro_costo" id="provider-cost-center"><option value="">Sin centro</option></select></label>
+              <label class="wide">Alias OCR separados por |<textarea name="aliases" rows="3" placeholder="PROVEEDOR FICTICIO GAMMA | PROVEEDOR C"></textarea></label>
+            </div>
+            <label class="check-row"><input type="checkbox" name="activo" checked><span>Proveedor activo</span></label>
+            <div class="form-actions"><button type="button" class="button ghost" id="cancel-provider">Limpiar</button><button class="button primary" type="submit">Guardar proveedor</button></div>
+          </form>
+        </section>
+
+        <section class="panel provider-import-panel">
+          <div class="panel-title"><div><h2>Importar catálogo</h2><p>Primero se valida; nada se guarda hasta confirmar.</p></div></div>
+          <form id="provider-import-form" class="provider-import-form">
+            <label class="file-drop compact"><input id="provider-import-file" type="file" accept=".xlsx,.csv,.tsv" required><span>Seleccionar Excel o CSV</span><small id="provider-import-name">Ningún archivo seleccionado</small></label>
+            <button class="button primary" type="submit">Validar archivo</button>
+          </form>
+          <div id="provider-import-preview" class="import-preview hidden"></div>
+        </section>
+      </div>
+
+      <section class="panel provider-list-panel">
+        <div class="panel-title"><div><h2>Proveedores normalizados</h2><p id="provider-list-caption">Cargando catálogo…</p></div><input id="provider-search" class="compact-search" placeholder="Buscar nombre, RFC o alias"></div>
+        <div id="provider-list" class="provider-list"></div>
+      </section>
+
+      <section class="panel quality-panel">
+        <div class="panel-title"><div><h2>Calidad de datos</h2><p>Pendientes que reducen la automatización o bloquean la publicación.</p></div></div>
+        <div id="quality-list" class="quality-list"></div>
+      </section>
+
+      <section class="panel accounting-catalog-panel">
+        <div class="panel-title"><div><h2>Estructura contable</h2><p>Fijos y variables son categorías maestras; subcategorías y centros de costo son configurables.</p></div></div>
+        <div class="accounting-catalog-grid">
+          <div class="accounting-column">
+            <h3>Categorías maestras</h3>
+            <div id="accounting-categories" class="mini-catalog"></div>
+            <small>Se mantienen en dos para evitar mezclar naturaleza del gasto con área operativa.</small>
+          </div>
+          <div class="accounting-column">
+            <h3>Subcategorías</h3>
+            <form id="subcategory-form" class="mini-catalog-form">
+              <input type="hidden" name="id">
+              <select name="categoria_id" required></select>
+              <input name="clave" required maxlength="50" placeholder="CLAVE">
+              <input name="nombre" required maxlength="150" placeholder="Nombre visible">
+              <label class="check-row"><input type="checkbox" name="activa" checked><span>Activa</span></label>
+              <div><button type="button" class="button ghost small" data-clear-catalog="subcategory-form">Limpiar</button><button class="button primary small">Guardar</button></div>
+            </form>
+            <div id="accounting-subcategories" class="mini-catalog"></div>
+          </div>
+          <div class="accounting-column">
+            <h3>Centros de costo</h3>
+            <form id="cost-center-form" class="mini-catalog-form">
+              <input type="hidden" name="id">
+              <input name="clave" required maxlength="50" placeholder="CLAVE">
+              <input name="nombre" required maxlength="150" placeholder="Nombre visible">
+              <label class="check-row"><input type="checkbox" name="activo" checked><span>Activo</span></label>
+              <div><button type="button" class="button ghost small" data-clear-catalog="cost-center-form">Limpiar</button><button class="button primary small">Guardar</button></div>
+            </form>
+            <div id="accounting-cost-centers" class="mini-catalog"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </template>
+
+  <template id="review-template">
+    <section class="review-page">
+      <div class="review-header">
+        <a href="#/bandeja" class="back-link">← Bandeja</a>
+        <div class="review-title"><p class="eyebrow">REVISIÓN HUMANA</p><h1 id="review-name">Factura</h1><p id="review-meta"></p></div>
+        <span id="review-state" class="badge warning">Pendiente</span>
+      </div>
+      <div class="review-layout">
+        <section class="document-panel panel">
+          <div class="panel-title"><div><h2>Documento original</h2><p>Fuente de verdad para la revisión</p></div><a id="open-document" class="button ghost small" target="_blank">Abrir</a></div>
+          <div id="document-preview" class="document-preview"></div>
+        </section>
+        <section class="data-panel panel">
+          <div id="validation-summary"></div>
+          <div id="branch-suggestion" class="branch-suggestion hidden"></div>
+          <form id="review-form">
+            <div id="review-fields" class="review-fields"></div>
+            <label>Observaciones<textarea name="observaciones" rows="3" placeholder="Opcional"></textarea></label>
+          </form>
+          <div id="expense-override-panel" class="expense-override hidden">
+            <label><input type="checkbox" id="expense-override"> <span>Este documento sí genera gasto</span></label>
+            <small>Marque esta casilla para corregir manualmente la clasificación y permitir su aprobación.</small>
+          </div>
+          <div id="approved-expense-panel" class="expense-override hidden">
+            <label><input type="checkbox" id="approved-generates-expense"> <span>Esta factura genera gasto en Analytics</span></label>
+            <small>Desmarque la casilla para conservar la factura y su historial, pero retirarla del análisis financiero.</small>
+          </div>
+          <div id="learning-panel" class="learning-panel">
+            <strong>Aprender de esta revisión</strong>
+            <label id="remember-alias-row"><input type="checkbox" id="remember-alias"><span id="remember-alias-label">Recordar el nombre leído como alias del proveedor</span></label>
+            <label><input type="checkbox" id="remember-classification"><span>Usar esta categoría, subcategoría y centro de costo para próximas facturas del proveedor</span></label>
+            <small>Las reglas quedan auditadas y se pueden reemplazar desde el catálogo.</small>
+          </div>
+          <div id="invoice-periodification-panel" class="periodification-panel hidden">
+            <strong>Distribución semanal del gasto fijo</strong>
+            <small>El documento conserva el total; solo su reconocimiento en el Estado de Resultados se reparte entre semanas.</small>
+            <div class="periodification-grid">
+              <label>Periodicidad<select id="invoice-period-type"><option value="una_semana">Una sola semana</option><option value="mensual">Mensual</option><option value="bimestral">Bimestral</option><option value="personalizado">Periodo personalizado</option></select></label>
+              <label>Desde<input id="invoice-period-from" type="date"></label>
+              <label>Hasta<input id="invoice-period-to" type="date"></label>
+            </div>
+            <div id="invoice-period-preview" class="period-preview"></div>
+            <label class="check-row"><input type="checkbox" id="invoice-remember-period"><span>Recordar esta periodicidad para próximos gastos del proveedor</span></label>
+          </div>
+          <div id="validation-list" class="validation-list"></div>
+        </section>
+      </div>
+      <footer class="decision-bar">
+        <button class="button danger ghost" id="reject-button">Rechazar</button>
+        <p id="change-count">Sin cambios</p>
+        <button class="button primary" id="approve-button">Aprobar factura</button>
+      </footer>
+    </section>
+  </template>
+
+  <script src="/static/app.js?v=20260829-2" defer></script>
+</body>
+</html>

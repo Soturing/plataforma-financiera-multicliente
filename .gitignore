@@ -1,0 +1,38 @@
+# Configuración y secretos locales
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+*.log
+data/
+outputs/
+output/
+deliverables/
+entregables/
+tmp/
+
+# Marca y configuración específica de cada cliente
+app/static/brands/
+config/tenants/private/
+
+# Bases de datos, reportes y exportaciones locales
+*.db
+*.sqlite
+*.sqlite3
+reports/
+exports/
