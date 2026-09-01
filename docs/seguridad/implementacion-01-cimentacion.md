@@ -61,7 +61,7 @@ Esta entrega no convierte la demo actual en un sistema productivo. Permanecen pe
 4. conectar todas las rutas financieras al contexto y permiso correspondientes;
 5. eliminar los campos de actor enviados por el navegador;
 6. conectar a las rutas el núcleo ya construido del router hacia un data plane independiente por tenant;
-7. incorporar `tenant_id`, RLS y credenciales mínimas dentro de cada data plane;
+7. crear los logins reales y completar RLS por sucursal sobre la protección por `tenant_id` ya construida;
 8. separar la credencial de escritura y firma externa del registro de auditoría ya encadenado;
 9. migrar archivos a almacenamiento separado por tenant; y
 10. completar las pruebas end-to-end con dos data planes ficticios.

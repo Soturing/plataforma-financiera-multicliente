@@ -285,9 +285,11 @@ def provision_data_plane_identity(
                     "data_plane_already_bound",
                     "El data plane ya pertenece a otro tenant y no puede reasignarse",
                 )
+            conn.execute("SELECT security_context.finalize_tenant_isolation()")
             return False
         conn.execute(
             "INSERT INTO security_context.tenant_identity (singleton, tenant_id) VALUES (true, %s)",
             (tenant_id,),
         )
+        conn.execute("SELECT security_context.finalize_tenant_isolation()")
         return True

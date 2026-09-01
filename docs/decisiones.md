@@ -171,3 +171,11 @@ Estado: núcleo implementado en rama el 2026-09-01.
 Las credenciales de cada data plane se resuelven únicamente después de autorizar identidad, sesión, asignación y selección de tenant. El plano de control conserva una referencia opaca, nunca la credencial. La configuración externa y el PostgreSQL destino deben declarar el mismo UUID autorizado; la vinculación interna de la base es de un solo uso e inmutable.
 
 Los detalles y los controles todavía pendientes se conservan en `docs/seguridad/implementacion-03-router-data-plane.md`.
+
+## D-022 — Tenant obligatorio y RLS forzada dentro de cada silo
+
+Estado: implementada en rama el 2026-09-01; pendiente de credenciales reales de despliegue.
+
+Aunque cada cliente posee un PostgreSQL separado, todas las tablas sensibles conservan también el UUID inmutable del tenant y aplican `FORCE ROW LEVEL SECURITY`. Los roles runtime y reportes no pueden omitir RLS ni modificar estructura; una conexión privilegiada o propietaria es rechazada al intentar activar un contexto de aplicación.
+
+Los detalles se conservan en `docs/seguridad/implementacion-04-rls-credenciales.md`.

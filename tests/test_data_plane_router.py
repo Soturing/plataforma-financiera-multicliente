@@ -145,6 +145,32 @@ def test_router_builder_requires_verified_tls_in_production(tmp_path):
 
 
 @pytest.mark.skipif(
+    not DATA_PLANE_TEST_DATABASE_URL,
+    reason="DATA_PLANE_TEST_DATABASE_URL is required for view-security tests",
+)
+def test_financial_views_use_invoker_security_before_provisioning():
+    conn = psycopg.connect(DATA_PLANE_TEST_DATABASE_URL, row_factory=dict_row)
+    try:
+        views = conn.execute(
+            """
+            SELECT count(*) AS total,
+                   count(*) FILTER (
+                       WHERE COALESCE(c.reloptions, ARRAY[]::text[]) @> ARRAY['security_invoker=true']
+                   ) AS invoker
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname IN ('analytics', 'finance')
+               AND c.relkind = 'v'
+            """
+        ).fetchone()
+        assert views["total"] > 0
+        assert views["invoker"] == views["total"]
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+@pytest.mark.skipif(
     not CONTROL_TEST_DATABASE_URL,
     reason="CONTROL_TEST_DATABASE_URL is required for routing integration tests",
 )
@@ -284,6 +310,7 @@ def test_data_plane_binding_is_single_assignment_and_request_context_is_immutabl
             )
         assert rebound.value.code == "data_plane_already_bound"
 
+        conn.execute("SET LOCAL ROLE tenant_runtime")
         conn.execute(
             "SELECT security_context.activate_request(%s, %s, %s, %s)",
             (tenant_id, actor_id, session_id, branch_id),
@@ -322,10 +349,31 @@ def test_data_plane_rejects_an_authorized_context_for_another_tenant():
     try:
         tenant_id = uuid4()
         provision_data_plane_identity(DATA_PLANE_TEST_DATABASE_URL, tenant_id, connection=conn)
+        conn.execute("SET LOCAL ROLE tenant_runtime")
         with pytest.raises(psycopg.Error):
             conn.execute(
                 "SELECT security_context.activate_request(%s, %s, %s, NULL)",
                 (uuid4(), uuid4(), uuid4()),
+            )
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+@pytest.mark.skipif(
+    not DATA_PLANE_TEST_DATABASE_URL,
+    reason="DATA_PLANE_TEST_DATABASE_URL is required for principal-safety tests",
+)
+def test_privileged_database_owner_cannot_activate_application_context():
+    conn = psycopg.connect(DATA_PLANE_TEST_DATABASE_URL, row_factory=dict_row)
+    try:
+        tenant_id = uuid4()
+        provision_data_plane_identity(DATA_PLANE_TEST_DATABASE_URL, tenant_id, connection=conn)
+
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute(
+                "SELECT security_context.activate_request(%s, %s, %s, NULL)",
+                (tenant_id, uuid4(), uuid4()),
             )
     finally:
         conn.rollback()
@@ -354,6 +402,7 @@ def test_router_establishes_context_only_after_control_and_data_plane_agree():
             tenant_id,
             connection=data_conn,
         )
+        data_conn.execute("SET LOCAL ROLE tenant_runtime")
         registry = TrackingRegistry(_registration(tenant_id, reference))
         router = TenantDataPlaneRouter(CONTROL_TEST_DATABASE_URL, registry)
         actor = _context(tenant_id)
@@ -388,3 +437,69 @@ def test_router_establishes_context_only_after_control_and_data_plane_agree():
         data_conn.rollback()
         control_conn.close()
         data_conn.close()
+
+
+@pytest.mark.skipif(
+    not DATA_PLANE_TEST_DATABASE_URL,
+    reason="DATA_PLANE_TEST_DATABASE_URL is required for RLS integration tests",
+)
+def test_runtime_role_sees_rows_only_after_context_and_cannot_spoof_tenant():
+    conn = psycopg.connect(DATA_PLANE_TEST_DATABASE_URL, row_factory=dict_row)
+    try:
+        tenant_id = uuid4()
+        actor_id = uuid4()
+        session_id = uuid4()
+        provision_data_plane_identity(DATA_PLANE_TEST_DATABASE_URL, tenant_id, connection=conn)
+
+        tables = conn.execute(
+            """
+            SELECT count(*) AS total,
+                   count(*) FILTER (WHERE c.relrowsecurity AND c.relforcerowsecurity) AS protected,
+                   count(*) FILTER (WHERE a.attnotnull) AS tenant_not_null
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              JOIN pg_attribute a
+                ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped
+             WHERE n.nspname IN ('catalog', 'core', 'ocr', 'ai', 'audit', 'finance')
+               AND c.relkind IN ('r', 'p')
+            """
+        ).fetchone()
+        assert tables["total"] > 20
+        assert tables["protected"] == tables["total"]
+        assert tables["tenant_not_null"] == tables["total"]
+
+        conn.execute("SET LOCAL ROLE tenant_runtime")
+        assert conn.execute("SELECT count(*) AS count FROM catalog.sucursales").fetchone()["count"] == 0
+
+        conn.execute(
+            "SELECT security_context.activate_request(%s, %s, %s, NULL)",
+            (tenant_id, actor_id, session_id),
+        )
+        assert conn.execute("SELECT count(*) AS count FROM catalog.sucursales").fetchone()["count"] > 0
+
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with conn.transaction():
+                conn.execute(
+                    """
+                    INSERT INTO catalog.categorias (clave, nombre, tenant_id)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (f"PYTEST-{str(uuid4())[:8]}", "Categoría ajena sintética", uuid4()),
+                )
+
+        inserted = conn.execute(
+            """
+            INSERT INTO catalog.categorias (clave, nombre)
+            VALUES (%s, %s)
+            RETURNING tenant_id
+            """,
+            (f"PYTEST-{str(uuid4())[:8]}", f"Categoría sintética {uuid4()}"),
+        ).fetchone()
+        assert inserted["tenant_id"] == tenant_id
+
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with conn.transaction():
+                conn.execute("DELETE FROM audit.correcciones WHERE false")
+    finally:
+        conn.rollback()
+        conn.close()

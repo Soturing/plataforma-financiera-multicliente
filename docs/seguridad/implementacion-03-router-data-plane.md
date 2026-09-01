@@ -77,12 +77,13 @@ Resultado de esta entrega: **142 pruebas aprobadas** sobre bases aisladas recrea
 
 ## Pendientes antes de conectar rutas financieras
 
-1. crear credenciales separadas `tenant_runtime`, `tenant_reports` y `tenant_migrations`;
-2. incorporar `tenant_id` y `FORCE ROW LEVEL SECURITY` en las tablas sensibles;
-3. enlazar cada sucursal del plano de control con su UUID del data plane;
-4. sustituir actores recibidos del navegador por la identidad de la sesión;
-5. enlazar cada ruta con su acción y modo de acceso;
-6. separar archivos y trabajos en segundo plano por tenant; y
-7. ejecutar pruebas con dos data planes simultáneos y credenciales cruzadas.
+1. crear los logins reales sobre los roles mínimos ya definidos;
+2. enlazar cada sucursal del plano de control con su UUID del data plane;
+3. sustituir actores recibidos del navegador por la identidad de la sesión;
+4. enlazar cada ruta con su acción y modo de acceso;
+5. separar archivos y trabajos en segundo plano por tenant; y
+6. ejecutar pruebas con dos data planes simultáneos y credenciales cruzadas.
+
+La implementación de `tenant_id`, roles grupales y `FORCE ROW LEVEL SECURITY` continúa en [Implementación 04](implementacion-04-rls-credenciales.md).
 
 Hasta completar esos puntos, las rutas financieras siguen siendo exclusivamente parte de la demo local.

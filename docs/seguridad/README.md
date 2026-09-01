@@ -22,6 +22,7 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 - [Implementación 01 — Cimentación de seguridad](implementacion-01-cimentacion.md)
 - [Implementación 02 — Ciclo inicial de identidades](implementacion-02-ciclo-identidades.md)
 - [Implementación 03 — Router seguro de data planes](implementacion-03-router-data-plane.md)
+- [Implementación 04 — RLS y roles mínimos del data plane](implementacion-04-rls-credenciales.md)
 
 ## Regla de implementación
 
