@@ -11,6 +11,7 @@ services:
       - control_postgres_data:/var/lib/postgresql/data
       - ./control/migrations/001_control_plane.sql:/docker-entrypoint-initdb.d/10-control-plane.sql:ro
       - ./control/migrations/002_identity_lifecycle.sql:/docker-entrypoint-initdb.d/11-identity-lifecycle.sql:ro
+      - ./control/migrations/003_data_plane_routing.sql:/docker-entrypoint-initdb.d/12-data-plane-routing.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${CONTROL_POSTGRES_USER:-control_owner} -d ${CONTROL_POSTGRES_DB:-facturas_control}"]
       interval: 5s
@@ -50,6 +51,7 @@ services:
       - ./db/migrations/021_document_deletion_and_cancellation.sql:/docker-entrypoint-initdb.d/31-document-deletion-and-cancellation.sql:ro
       - ./db/migrations/022_weekly_report_expenses.sql:/docker-entrypoint-initdb.d/32-weekly-report-expenses.sql:ro
       - ./db/migrations/023_estimated_fixed_expenses.sql:/docker-entrypoint-initdb.d/33-estimated-fixed-expenses.sql:ro
+      - ./db/migrations/024_data_plane_identity.sql:/docker-entrypoint-initdb.d/34-data-plane-identity.sql:ro
       - ./db/seeds/001_demo_catalogs.sql:/docker-entrypoint-initdb.d/20-demo-catalogs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturas_app} -d ${POSTGRES_DB:-facturas_demo}"]

@@ -163,3 +163,11 @@ Estado: implementada en rama el 2026-08-31.
 Suspender una identidad rota su sello de seguridad, revoca todas sus sesiones, suspende sus asignaciones y cancela invitaciones pendientes en una sola transacción. Las sesiones propias pueden revocarse sin privilegios globales; revocar sesiones ajenas continúa siendo una acción administrativa C2.
 
 Los detalles se conservan en `docs/seguridad/implementacion-02-ciclo-identidades.md`.
+
+## D-021 — Resolución autorizada y doble identidad de tenant
+
+Estado: núcleo implementado en rama el 2026-09-01.
+
+Las credenciales de cada data plane se resuelven únicamente después de autorizar identidad, sesión, asignación y selección de tenant. El plano de control conserva una referencia opaca, nunca la credencial. La configuración externa y el PostgreSQL destino deben declarar el mismo UUID autorizado; la vinculación interna de la base es de un solo uso e inmutable.
+
+Los detalles y los controles todavía pendientes se conservan en `docs/seguridad/implementacion-03-router-data-plane.md`.

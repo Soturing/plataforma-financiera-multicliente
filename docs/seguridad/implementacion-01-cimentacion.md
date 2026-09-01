@@ -56,13 +56,13 @@ Las pruebas cubren:
 Esta entrega no convierte la demo actual en un sistema productivo. Permanecen pendientes:
 
 1. elegir y configurar el proveedor de identidad con passkeys;
-2. crear el procedimiento controlado del primer director;
-3. implementar invitaciones, registro, recuperación, suspensión y revocación;
+2. ejecutar con el proveedor real el procedimiento ya construido para el primer director;
+3. completar aceptación de invitaciones, recuperación y reactivación; suspensión y revocación ya están construidas;
 4. conectar todas las rutas financieras al contexto y permiso correspondientes;
 5. eliminar los campos de actor enviados por el navegador;
-6. implementar el router hacia un data plane independiente por tenant;
+6. conectar a las rutas el núcleo ya construido del router hacia un data plane independiente por tenant;
 7. incorporar `tenant_id`, RLS y credenciales mínimas dentro de cada data plane;
-8. escribir los eventos mediante un servicio de auditoría con encadenamiento criptográfico;
+8. separar la credencial de escritura y firma externa del registro de auditoría ya encadenado;
 9. migrar archivos a almacenamiento separado por tenant; y
 10. completar las pruebas end-to-end con dos data planes ficticios.
 
