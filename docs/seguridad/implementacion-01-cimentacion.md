@@ -58,7 +58,7 @@ Esta entrega no convierte la demo actual en un sistema productivo. Permanecen pe
 1. elegir y configurar el proveedor de identidad con passkeys;
 2. ejecutar con el proveedor real el procedimiento ya construido para el primer director;
 3. completar aceptación de invitaciones, recuperación y reactivación; suspensión y revocación ya están construidas;
-4. conectar todas las rutas financieras al contexto y permiso correspondientes;
+4. conectar los handlers al catálogo ejecutable que ya clasifica todas las rutas financieras;
 5. eliminar los campos de actor enviados por el navegador;
 6. conectar a las rutas el núcleo ya construido del router hacia un data plane independiente por tenant;
 7. crear los logins reales y completar RLS por sucursal sobre la protección por `tenant_id` ya construida;

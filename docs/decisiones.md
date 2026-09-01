@@ -179,3 +179,11 @@ Estado: implementada en rama el 2026-09-01; pendiente de credenciales reales de 
 Aunque cada cliente posee un PostgreSQL separado, todas las tablas sensibles conservan también el UUID inmutable del tenant y aplican `FORCE ROW LEVEL SECURITY`. Los roles runtime y reportes no pueden omitir RLS ni modificar estructura; una conexión privilegiada o propietaria es rechazada al intentar activar un contexto de aplicación.
 
 Los detalles se conservan en `docs/seguridad/implementacion-04-rls-credenciales.md`.
+
+## D-023 — Toda ruta de negocio requiere clasificación explícita
+
+Estado: catálogo implementado en rama el 2026-09-01; handlers pendientes de conexión.
+
+Cada combinación de método y ruta financiera declara acciones, modo de acceso, estrategia de sucursal y campos de actor no confiables. La cobertura se compara automáticamente contra FastAPI, por lo que una ruta sin política no puede incorporarse silenciosamente al modo seguro.
+
+Los detalles se conservan en `docs/seguridad/implementacion-05-catalogo-rutas.md`.

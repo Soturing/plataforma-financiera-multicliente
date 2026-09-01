@@ -72,10 +72,11 @@ Las pruebas verifican que:
 - una fila con un tenant falsificado es rechazada;
 - las inserciones ordinarias reciben el tenant del contexto;
 - el runtime no puede borrar auditoría;
-- otro tenant no puede activar el data plane; y
+- otro tenant no puede activar el data plane;
+- una credencial cruzada entre dos PostgreSQL físicamente distintos falla antes de consultar datos; y
 - la aplicación demo conserva compatibilidad.
 
-Resultado de la entrega: **145 pruebas aprobadas** sobre PostgreSQL aislado recreado desde cero.
+Resultado de la entrega: **146 pruebas aprobadas** con dos PostgreSQL de tenant y un plano de control aislados.
 
 ## Pendientes
 
@@ -83,5 +84,4 @@ Resultado de la entrega: **145 pruebas aprobadas** sobre PostgreSQL aislado recr
 2. aplicar restricciones por sucursal además del aislamiento por tenant;
 3. adaptar las migraciones futuras para ejecutarse con el tenant explícito;
 4. enlazar las rutas financieras al router y sustituir sus conexiones actuales;
-5. eliminar los actores de texto enviados por el navegador; y
-6. probar dos data planes simultáneos con credenciales deliberadamente cruzadas.
+5. eliminar los actores de texto enviados por el navegador.

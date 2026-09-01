@@ -70,19 +70,19 @@ La suite valida:
 - discrepancia entre registro y tenant autorizado;
 - vinculación única e irreversible del data plane;
 - rechazo del contexto de otro tenant;
+- rechazo extremo a extremo de credenciales cruzadas entre dos data planes físicos;
 - inmutabilidad del contexto transaccional; y
 - acuerdo extremo a extremo entre autorización, registro y PostgreSQL.
 
-Resultado de esta entrega: **142 pruebas aprobadas** sobre bases aisladas recreadas desde cero.
+Resultado acumulado al incorporar la prueba cruzada: **146 pruebas aprobadas** con dos data planes aislados.
 
 ## Pendientes antes de conectar rutas financieras
 
 1. crear los logins reales sobre los roles mínimos ya definidos;
 2. enlazar cada sucursal del plano de control con su UUID del data plane;
 3. sustituir actores recibidos del navegador por la identidad de la sesión;
-4. enlazar cada ruta con su acción y modo de acceso;
-5. separar archivos y trabajos en segundo plano por tenant; y
-6. ejecutar pruebas con dos data planes simultáneos y credenciales cruzadas.
+4. enlazar cada handler con el catálogo de ruta, acción y modo de acceso ya construido;
+5. separar archivos y trabajos en segundo plano por tenant.
 
 La implementación de `tenant_id`, roles grupales y `FORCE ROW LEVEL SECURITY` continúa en [Implementación 04](implementacion-04-rls-credenciales.md).
 

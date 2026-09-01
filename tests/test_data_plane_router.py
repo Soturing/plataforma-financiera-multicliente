@@ -33,6 +33,7 @@ from app.security.models import (
 
 CONTROL_TEST_DATABASE_URL = os.getenv("CONTROL_TEST_DATABASE_URL")
 DATA_PLANE_TEST_DATABASE_URL = os.getenv("DATA_PLANE_TEST_DATABASE_URL")
+DATA_PLANE_B_TEST_DATABASE_URL = os.getenv("DATA_PLANE_B_TEST_DATABASE_URL")
 NOW = datetime(2026, 8, 31, 21, 0, tzinfo=timezone.utc)
 
 
@@ -503,3 +504,87 @@ def test_runtime_role_sees_rows_only_after_context_and_cannot_spoof_tenant():
     finally:
         conn.rollback()
         conn.close()
+
+
+@pytest.mark.skipif(
+    not CONTROL_TEST_DATABASE_URL
+    or not DATA_PLANE_TEST_DATABASE_URL
+    or not DATA_PLANE_B_TEST_DATABASE_URL,
+    reason="Control and two isolated data planes are required for crossed-credential tests",
+)
+def test_crossed_credentials_between_two_data_planes_are_rejected_end_to_end():
+    control_conn = psycopg.connect(CONTROL_TEST_DATABASE_URL, row_factory=dict_row)
+    plane_a = psycopg.connect(DATA_PLANE_TEST_DATABASE_URL, row_factory=dict_row)
+    plane_b = psycopg.connect(DATA_PLANE_B_TEST_DATABASE_URL, row_factory=dict_row)
+    try:
+        tenant_a, tenant_b = uuid4(), uuid4()
+        reference_a = f"tenant-{str(tenant_a)[:8]}"
+        reference_b = f"tenant-{str(tenant_b)[:8]}"
+        with control_conn.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT INTO control.tenants (id, slug, display_name, state, data_plane_reference)
+                VALUES (%s, %s, %s, 'ACTIVO', %s)
+                """,
+                [
+                    (tenant_a, f"pytest-{str(tenant_a)[:8]}", "Tenant sintético A", reference_a),
+                    (tenant_b, f"pytest-{str(tenant_b)[:8]}", "Tenant sintético B", reference_b),
+                ],
+            )
+        provision_data_plane_identity(
+            DATA_PLANE_TEST_DATABASE_URL,
+            tenant_a,
+            connection=plane_a,
+        )
+        provision_data_plane_identity(
+            DATA_PLANE_B_TEST_DATABASE_URL,
+            tenant_b,
+            connection=plane_b,
+        )
+        plane_a.execute("SET LOCAL ROLE tenant_runtime")
+        plane_b.execute("SET LOCAL ROLE tenant_runtime")
+
+        actor = _context(tenant_a)
+        request = AuthorizationRequest(
+            action="documents.upload",
+            tenant_id=tenant_a,
+            now=NOW,
+        )
+        registry = TrackingRegistry(
+            DataPlaneRegistration(
+                tenant_id=tenant_a,
+                reference=reference_a,
+                database_url=DATA_PLANE_B_TEST_DATABASE_URL,
+                upload_dir=Path("C:/synthetic/tenant-a"),
+            )
+        )
+        router = TenantDataPlaneRouter(CONTROL_TEST_DATABASE_URL, registry)
+
+        with pytest.raises(DataPlaneError) as crossed:
+            with router.connect(
+                actor,
+                request,
+                DataPlaneAccess.WRITE,
+                control_connection=control_conn,
+                data_connection=plane_b,
+            ):
+                pass
+        assert crossed.value.code == "data_plane_identity_rejected"
+
+        with router.connect(
+            actor,
+            request,
+            DataPlaneAccess.WRITE,
+            control_connection=control_conn,
+            data_connection=plane_a,
+        ) as session:
+            assert session.connection.execute(
+                "SELECT security_context.current_tenant_id() AS tenant_id"
+            ).fetchone()["tenant_id"] == tenant_a
+    finally:
+        control_conn.rollback()
+        plane_a.rollback()
+        plane_b.rollback()
+        control_conn.close()
+        plane_a.close()
+        plane_b.close()
