@@ -1,7 +1,7 @@
 # Diseño de seguridad
 
 Estado general: dirección aprobada; implementación en curso.
-Última actualización: 2026-09-01.
+Última actualización: 2026-09-02.
 
 Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la construcción del sistema de usuarios, roles y aislamiento multi-tenant.
 
@@ -25,6 +25,7 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 - [Implementación 04 — RLS y roles mínimos del data plane](implementacion-04-rls-credenciales.md)
 - [Implementación 05 — Catálogo cerrado de rutas de negocio](implementacion-05-catalogo-rutas.md)
 - [Implementación 06 — Primer flujo vertical seguro de facturas](implementacion-06-flujo-facturas.md)
+- [Implementación 07 — Dependencias que procesan entradas no confiables](implementacion-07-dependencias.md)
 
 ## Regla de implementación
 
