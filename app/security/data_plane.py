@@ -49,6 +49,7 @@ class AuthorizedDataPlane:
     decision: AuthorizationDecision
     action: str
     branch_id: UUID | None
+    control_branch_id: UUID | None = None
 
 
 @dataclass
@@ -172,6 +173,24 @@ class TenantDataPlaneRouter:
                 (request.tenant_id,),
             ).fetchone()
 
+            control_branch_id = None
+            if request.branch_id is not None:
+                branch = conn.execute(
+                    """
+                    SELECT id
+                      FROM control.branches
+                     WHERE tenant_id = %s
+                       AND data_plane_branch_id = %s
+                       AND active
+                    """,
+                    (request.tenant_id, request.branch_id),
+                ).fetchone()
+                if branch is None:
+                    raise DataPlaneError(
+                        "branch_unavailable", "La sucursal no pertenece al tenant autorizado"
+                    )
+                control_branch_id = branch["id"]
+
         if tenant is None or tenant["state"] not in {"ACTIVO", "SOLO_LECTURA"}:
             raise DataPlaneError("tenant_unavailable", "El tenant no está disponible")
         if access is DataPlaneAccess.WRITE and tenant["state"] != "ACTIVO":
@@ -190,6 +209,7 @@ class TenantDataPlaneRouter:
             decision=decision,
             action=request.action,
             branch_id=request.branch_id,
+            control_branch_id=control_branch_id,
         )
 
     @contextmanager

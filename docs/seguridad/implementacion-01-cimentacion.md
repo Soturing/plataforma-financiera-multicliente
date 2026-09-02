@@ -58,12 +58,12 @@ Esta entrega no convierte la demo actual en un sistema productivo. Permanecen pe
 1. elegir y configurar el proveedor de identidad con passkeys;
 2. ejecutar con el proveedor real el procedimiento ya construido para el primer director;
 3. completar aceptación de invitaciones, recuperación y reactivación; suspensión y revocación ya están construidas;
-4. conectar los handlers al catálogo ejecutable que ya clasifica todas las rutas financieras;
-5. eliminar los campos de actor enviados por el navegador;
-6. conectar a las rutas el núcleo ya construido del router hacia un data plane independiente por tenant;
+4. extender a las 47 rutas restantes la conexión ya realizada en el primer subconjunto de facturas;
+5. retirar del contrato los campos de actor; las cinco operaciones de facturas conectadas ya los ignoran en modo seguro;
+6. hacer tenant-aware los workers OCR y las colas antes de habilitar su ruta asíncrona;
 7. crear los logins reales y completar RLS por sucursal sobre la protección por `tenant_id` ya construida;
 8. separar la credencial de escritura y firma externa del registro de auditoría ya encadenado;
-9. migrar archivos a almacenamiento separado por tenant; y
-10. completar las pruebas end-to-end con dos data planes ficticios.
+9. extender a todos los módulos la raíz de archivos por tenant ya usada por la carga individual; y
+10. repetir con el proveedor OIDC real las pruebas end-to-end sintéticas ya aprobadas.
 
 Hasta completar esos puntos, los endpoints de negocio existentes se consideran exclusivamente una demo local y no deben exponerse a Internet.

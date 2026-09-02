@@ -136,6 +136,7 @@ def test_router_builder_requires_verified_tls_in_production(tmp_path):
         control_database_url="postgresql://control:synthetic@localhost:5433/control",
         data_plane_config_dir=tmp_path,
         environment="production",
+        enforce_business_security=True,
     )
 
     router = build_data_plane_router(settings)
@@ -234,6 +235,45 @@ def test_registry_identity_must_equal_the_authorized_tenant():
 
         assert caught.value.code == "data_plane_identity_mismatch"
         assert registry.calls == [reference]
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+@pytest.mark.skipif(
+    not CONTROL_TEST_DATABASE_URL,
+    reason="CONTROL_TEST_DATABASE_URL is required for branch routing tests",
+)
+def test_router_rejects_branch_that_is_not_registered_for_the_tenant():
+    conn = psycopg.connect(CONTROL_TEST_DATABASE_URL, row_factory=dict_row)
+    try:
+        tenant_id = uuid4()
+        reference = f"tenant-{str(tenant_id)[:8]}"
+        conn.execute(
+            """
+            INSERT INTO control.tenants (id, slug, display_name, state, data_plane_reference)
+            VALUES (%s, %s, 'Tenant sintético', 'ACTIVO', %s)
+            """,
+            (tenant_id, f"pytest-{str(tenant_id)[:8]}", reference),
+        )
+        registry = TrackingRegistry(_registration(tenant_id, reference))
+        router = TenantDataPlaneRouter(CONTROL_TEST_DATABASE_URL, registry)
+
+        with pytest.raises(DataPlaneError) as caught:
+            router.resolve(
+                _context(tenant_id),
+                AuthorizationRequest(
+                    action="documents.read",
+                    tenant_id=tenant_id,
+                    branch_id=uuid4(),
+                    now=NOW,
+                ),
+                DataPlaneAccess.READ,
+                control_connection=conn,
+            )
+
+        assert caught.value.code == "branch_unavailable"
+        assert registry.calls == []
     finally:
         conn.rollback()
         conn.close()

@@ -18,6 +18,12 @@ from app.config import Settings, get_settings
 from app.database import get_connection
 from app.errors import DomainError
 from app.security.api import router as security_router
+from app.security.business_access import (
+    BusinessDataAccess,
+    is_secured_business_request,
+    require_business_data_plane,
+)
+from app.security.data_plane import DataPlaneAccess
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
 from app.financial_reports import (
@@ -125,8 +131,34 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(security_router)
 
 
+DOCUMENT_UPLOAD_ACCESS = require_business_data_plane("documents.upload", DataPlaneAccess.WRITE)
+DOCUMENT_REPROCESS_ACCESS = require_business_data_plane("documents.reprocess", DataPlaneAccess.WRITE)
+DOCUMENT_REVIEW_ACCESS = require_business_data_plane("documents.review", DataPlaneAccess.READ)
+DOCUMENT_READ_ACCESS = require_business_data_plane("documents.read", DataPlaneAccess.READ)
+DOCUMENT_ORIGINAL_ACCESS = require_business_data_plane(
+    "documents.original.read", DataPlaneAccess.READ
+)
+DOCUMENT_APPROVE_ACCESS = require_business_data_plane("documents.approve", DataPlaneAccess.WRITE)
+DOCUMENT_EDIT_ACCESS = require_business_data_plane(
+    "documents.edit_approved", DataPlaneAccess.WRITE
+)
+CATALOG_READ_ACCESS = require_business_data_plane("providers.read", DataPlaneAccess.READ)
+
+
 @app.middleware("http")
 async def prevent_stale_demo_assets(request, call_next):
+    settings_provider = request.app.dependency_overrides.get(get_settings, get_settings)
+    settings = settings_provider()
+    if (
+        settings.enforce_business_security
+        and request.url.path.startswith("/api/v1/")
+        and not request.url.path.startswith("/api/v1/security/")
+        and not is_secured_business_request(request.method, request.url.path)
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": {"code": "route_not_security_integrated"}},
+        )
     response = await call_next(request)
     if (
         request.url.path == "/"
@@ -157,12 +189,14 @@ def health(conn: Connection = Depends(get_connection)):
 async def upload_invoice(
     archivo: UploadFile = File(...),
     sucursal_clave: str = Form(...),
-    creada_por: str = Form(...),
+    creada_por: str | None = Form(default=None),
     permitir_pdf_multipagina: bool = Form(default=False),
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_UPLOAD_ACCESS),
     settings: Settings = Depends(get_settings),
 ):
-    path, digest, _ = await save_upload(archivo, settings)
+    access.require_branch_key(sucursal_clave)
+    storage_settings = settings.model_copy(update={"upload_dir": access.upload_dir})
+    path, digest, _ = await save_upload(archivo, storage_settings)
     try:
         if path.suffix.lower() == ".pdf" and not permitir_pdf_multipagina:
             pages = pdf_page_count(path)
@@ -172,13 +206,13 @@ async def upload_invoice(
                     409,
                 )
         return create_invoice(
-            conn,
+            access.connection,
             sucursal_clave=sucursal_clave,
             filename=archivo.filename or path.name,
             mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
             file_path=str(path.resolve()),
             sha256=digest,
-            created_by=creada_por,
+            created_by=access.actor_reference(creada_por),
         )
     except Exception:
         Path(path).unlink(missing_ok=True)
@@ -318,9 +352,10 @@ def discard_duplicates(
 def simulate_processing(
     factura_id: UUID,
     data: ProcesamientoSimulado,
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_REPROCESS_ACCESS),
 ):
-    return process_simulated(conn, factura_id, data)
+    access.require_invoice_branch(factura_id)
+    return process_simulated(access.connection, factura_id, data)
 
 
 @app.post("/api/v1/facturas/{factura_id}/procesar-ocr", status_code=202, tags=["procesamiento"])
@@ -342,10 +377,14 @@ def review_queue_summary(
     tipo_documento: str | None = Query(default=None, max_length=40),
     proveedor: str | None = Query(default=None, max_length=120),
     sucursal_clave: str | None = Query(default=None, max_length=40),
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_REVIEW_ACCESS),
 ):
+    if sucursal_clave:
+        access.require_branch_key(sucursal_clave)
+    elif access.branch_id is not None:
+        sucursal_clave = access.branch_key(access.branch_id)
     return get_review_queue_summary(
-        conn,
+        access.connection,
         document_type=tipo_documento,
         provider=proveedor,
         branch_key=sucursal_clave,
@@ -363,10 +402,14 @@ def review_queue(
         "prioridad", "recientes", "antiguas", "proveedor_az",
         "proveedor_za", "total_mayor", "total_menor",
     ] = Query(default="prioridad"),
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_REVIEW_ACCESS),
 ):
+    if sucursal_clave:
+        access.require_branch_key(sucursal_clave)
+    elif access.branch_id is not None:
+        sucursal_clave = access.branch_key(access.branch_id)
     return list_review_queue(
-        conn,
+        access.connection,
         limit,
         offset,
         document_type=tipo_documento,
@@ -377,8 +420,12 @@ def review_queue(
 
 
 @app.get("/api/v1/facturas/{factura_id}", response_model=FacturaRevision, tags=["facturas"])
-def invoice_detail(factura_id: UUID, conn: Connection = Depends(get_connection)):
-    return get_invoice(conn, factura_id)
+def invoice_detail(
+    factura_id: UUID,
+    access: BusinessDataAccess = Depends(DOCUMENT_READ_ACCESS),
+):
+    access.require_invoice_branch(factura_id)
+    return get_invoice(access.connection, factura_id)
 
 
 @app.delete("/api/v1/facturas", tags=["facturas"])
@@ -409,24 +456,28 @@ def delete_invoices(
 
 
 @app.get("/api/v1/facturas/{factura_id}/expediente", tags=["facturas"])
-def invoice_case(factura_id: UUID, conn: Connection = Depends(get_connection)):
-    return get_invoice_case(conn, factura_id)
+def invoice_case(
+    factura_id: UUID,
+    access: BusinessDataAccess = Depends(DOCUMENT_READ_ACCESS),
+):
+    access.require_invoice_branch(factura_id)
+    return get_invoice_case(access.connection, factura_id)
 
 
 @app.get("/api/v1/facturas/{factura_id}/archivo", tags=["facturas"])
 def invoice_file(
     factura_id: UUID,
-    conn: Connection = Depends(get_connection),
-    settings: Settings = Depends(get_settings),
+    access: BusinessDataAccess = Depends(DOCUMENT_ORIGINAL_ACCESS),
 ):
-    row = conn.execute(
+    access.require_invoice_branch(factura_id)
+    row = access.connection.execute(
         "SELECT archivo_url, archivo_nombre, archivo_mime FROM core.facturas WHERE id = %s",
         (factura_id,),
     ).fetchone()
     if not row:
         raise DomainError("Factura no encontrada.", 404)
     path = Path(row["archivo_url"]).resolve()
-    upload_root = settings.upload_dir.resolve()
+    upload_root = access.upload_dir.resolve()
     if not path.is_relative_to(upload_root) or not path.is_file():
         raise DomainError("El archivo de la factura no está disponible.", 404)
     return FileResponse(
@@ -438,8 +489,9 @@ def invoice_file(
 
 
 @app.get("/api/v1/catalogos", tags=["catalogos"])
-def catalogs(conn: Connection = Depends(get_connection)):
-    return list_catalogs(conn)
+def catalogs(access: BusinessDataAccess = Depends(CATALOG_READ_ACCESS)):
+    access.require_action("accounting_catalogs.read")
+    return list_catalogs(access.connection)
 
 
 @app.get("/api/v1/documentos/buscar", tags=["documentos"])
@@ -1194,6 +1246,16 @@ def reclassify_existing_batch(lote_id: UUID, conn: Connection = Depends(get_conn
     return {"lote_id": lote_id, "clasificadas": len(results), "por_tipo": counts}
 
 
+def _corrected_branch_id(corrections) -> UUID | None:
+    for correction in corrections:
+        if correction.campo == "sucursal_id":
+            try:
+                return UUID(str(correction.valor))
+            except (TypeError, ValueError, AttributeError):
+                raise DomainError("La sucursal corregida no es válida.", 422) from None
+    return None
+
+
 @app.post(
     "/api/v1/facturas/{factura_id}/aprobar",
     response_model=DecisionResultado,
@@ -1202,10 +1264,14 @@ def reclassify_existing_batch(lote_id: UUID, conn: Connection = Depends(get_conn
 def approve_invoice(
     factura_id: UUID,
     data: AprobarRequest,
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_APPROVE_ACCESS),
 ):
+    access.require_invoice_branch(factura_id)
     return decide_invoice(
-        conn, factura_id, actor=data.revisada_por, decision="aprobada",
+        access.connection,
+        factura_id,
+        actor=access.actor_reference(data.revisada_por),
+        decision="aprobada",
         comment=data.comentario, force_as_expense=data.forzar_como_gasto,
         remember_alias=data.recordar_alias,
         remember_classification=data.recordar_clasificacion,
@@ -1222,12 +1288,16 @@ def approve_invoice(
 def correct_invoice(
     factura_id: UUID,
     data: CorregirRequest,
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_APPROVE_ACCESS),
 ):
-    return decide_invoice(
-        conn,
+    access.require_invoice_branch(
         factura_id,
-        actor=data.revisada_por,
+        target_branch_id=_corrected_branch_id(data.correcciones),
+    )
+    return decide_invoice(
+        access.connection,
+        factura_id,
+        actor=access.actor_reference(data.revisada_por),
         decision="corregida_y_aprobada",
         comment=data.comentario,
         corrections=[item.model_dump(mode="json") for item in data.correcciones],
@@ -1247,12 +1317,16 @@ def correct_invoice(
 def edit_invoice(
     factura_id: UUID,
     data: EditarFacturaRequest,
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_EDIT_ACCESS),
 ):
-    return edit_approved_invoice(
-        conn,
+    access.require_invoice_branch(
         factura_id,
-        actor=data.revisada_por,
+        target_branch_id=_corrected_branch_id(data.correcciones),
+    )
+    return edit_approved_invoice(
+        access.connection,
+        factura_id,
+        actor=access.actor_reference(data.revisada_por),
         comment=data.comentario,
         corrections=[item.model_dump(mode="json") for item in data.correcciones],
         generates_expense=data.genera_gasto,
@@ -1271,8 +1345,13 @@ def edit_invoice(
 def reject_invoice(
     factura_id: UUID,
     data: RechazarRequest,
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_APPROVE_ACCESS),
 ):
+    access.require_invoice_branch(factura_id)
     return decide_invoice(
-        conn, factura_id, actor=data.revisada_por, decision="rechazada", comment=data.comentario
+        access.connection,
+        factura_id,
+        actor=access.actor_reference(data.revisada_por),
+        decision="rechazada",
+        comment=data.comentario,
     )

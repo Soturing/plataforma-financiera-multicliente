@@ -187,7 +187,12 @@ def test_expired_assignment_is_denied_even_if_state_remains_active():
 def test_c2_action_requires_recent_authentication():
     tenant = uuid4()
     actor = context(
-        grant(RoleCode.CONSULTING_OPERATOR, tenant, ModuleCode.DOCUMENTS),
+        grant(
+            RoleCode.CONSULTING_OPERATOR,
+            tenant,
+            ModuleCode.DOCUMENTS,
+            all_branches=True,
+        ),
         auth_age_minutes=16,
     )
 
@@ -195,6 +200,29 @@ def test_c2_action_requires_recent_authentication():
 
     assert not decision.allowed
     assert decision.code == "recent_authentication_required"
+
+
+def test_document_access_is_restricted_to_assigned_branches():
+    tenant, assigned_branch, other_branch = uuid4(), uuid4(), uuid4()
+    actor = context(
+        grant(
+            RoleCode.CONSULTING_OPERATOR,
+            tenant,
+            ModuleCode.DOCUMENTS,
+            branch_ids=frozenset({assigned_branch}),
+        )
+    )
+
+    assert authorize(
+        actor,
+        request("documents.approve", tenant, branch_id=assigned_branch),
+    ).allowed
+    denied = authorize(
+        actor,
+        request("documents.approve", tenant, branch_id=other_branch),
+    )
+    assert not denied.allowed
+    assert denied.code == "branch_not_assigned"
 
 
 def test_director_c3_action_requires_recent_hardware_key():

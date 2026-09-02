@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     oidc_identity_provider: str | None = None
     oidc_auth_level_claim: str | None = None
     data_plane_config_dir: Path | None = None
+    enforce_business_security: bool = True
     upload_dir: Path = Path("data/uploads")
     max_upload_bytes: int = 40 * 1024 * 1024
     max_pdf_pages: int = 200
@@ -26,6 +28,13 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FACTURAS_", extra="ignore")
+
+    @model_validator(mode="after")
+    def reject_insecure_production_mode(self):
+        non_production = {"development", "test", "testing", "local"}
+        if self.environment.strip().lower() not in non_production and not self.enforce_business_security:
+            raise ValueError("La seguridad de rutas de negocio es obligatoria fuera de desarrollo")
+        return self
 
 
 @lru_cache

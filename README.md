@@ -82,6 +82,8 @@ Iniciar el servidor:
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
+La demo local existente conserva temporalmente `FACTURAS_ENFORCE_BUSINESS_SECURITY=false`. Esta excepción sólo es válida en desarrollo o pruebas. Con el modo seguro activo, las rutas ya migradas requieren OIDC, `X-Tenant-Id` y alcance de sucursal; las rutas pendientes se bloquean. Consulte [docs/seguridad/implementacion-06-flujo-facturas.md](docs/seguridad/implementacion-06-flujo-facturas.md).
+
 - API: `http://127.0.0.1:8000`
 - Interfaz del capturista: `http://127.0.0.1:8000/`
 - Documentación interactiva: `http://127.0.0.1:8000/docs`

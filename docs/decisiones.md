@@ -187,3 +187,13 @@ Estado: catálogo implementado en rama el 2026-09-01; handlers pendientes de con
 Cada combinación de método y ruta financiera declara acciones, modo de acceso, estrategia de sucursal y campos de actor no confiables. La cobertura se compara automáticamente contra FastAPI, por lo que una ruta sin política no puede incorporarse silenciosamente al modo seguro.
 
 Los detalles se conservan en `docs/seguridad/implementacion-05-catalogo-rutas.md`.
+
+## D-024 — Activación gradual con cierre de rutas pendientes
+
+Estado: primer flujo implementado en rama el 2026-09-01; activación real pendiente.
+
+La migración de la demo no habilita rutas mixtas en producción. Cuando el modo seguro está activo, sólo responden los handlers que ya obtienen identidad, tenant, sucursal, conexión y raíz de archivos desde el contexto autorizado. Toda ruta restante falla cerrada con `route_not_security_integrated` hasta completar su integración.
+
+El modo de compatibilidad se limita por validación a entornos locales o de prueba. La identidad enviada por el navegador puede conservarse temporalmente en el contrato local, pero las rutas seguras la ignoran y escriben el UUID de la sesión.
+
+Los detalles se conservan en `docs/seguridad/implementacion-06-flujo-facturas.md`.

@@ -33,34 +33,61 @@ def _roles(*roles: RoleCode) -> frozenset[RoleCode]:
 # Every accepted action must appear here. Unknown actions are denied, including for directors.
 PERMISSIONS: dict[str, PermissionSpec] = {
     # Documents and invoices.
-    "documents.read": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C, R, F)),
+    "documents.read": PermissionSpec(
+        ModuleCode.DOCUMENTS, _roles(D, C, R, F), branch_scoped=True
+    ),
     "documents.original.read": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C, R, F), control_level=ControlLevel.C1
+        ModuleCode.DOCUMENTS,
+        _roles(D, C, R, F),
+        control_level=ControlLevel.C1,
+        branch_scoped=True,
     ),
-    "documents.upload": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C)),
+    "documents.upload": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True),
     "documents.bulk_upload": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), control_level=ControlLevel.C2
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C2,
+        branch_scoped=True,
     ),
-    "documents.review": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C)),
+    "documents.review": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True),
     "documents.approve": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), control_level=ControlLevel.C1
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C1,
+        branch_scoped=True,
     ),
     "documents.edit_approved": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), control_level=ControlLevel.C2
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C2,
+        branch_scoped=True,
     ),
     "documents.change_expense": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), control_level=ControlLevel.C2
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C2,
+        branch_scoped=True,
     ),
-    "documents.periodify": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C)),
+    "documents.periodify": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True),
     "documents.delete_pending": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), control_level=ControlLevel.C2
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C2,
+        branch_scoped=True,
     ),
     "documents.cancel_batch": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), control_level=ControlLevel.C2
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C2,
+        branch_scoped=True,
     ),
-    "documents.reprocess": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C)),
-    "documents.duplicates.read": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C)),
-    "documents.duplicates.discard": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C)),
+    "documents.reprocess": PermissionSpec(ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True),
+    "documents.duplicates.read": PermissionSpec(
+        ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True
+    ),
+    "documents.duplicates.discard": PermissionSpec(
+        ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True
+    ),
     # Internal receipts.
     "receipts.read": PermissionSpec(ModuleCode.INTERNAL_RECEIPTS, _roles(D, C, R, F, O)),
     "receipts.create": PermissionSpec(

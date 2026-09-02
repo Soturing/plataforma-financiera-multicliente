@@ -1,6 +1,6 @@
 # Implementación 05 — Catálogo cerrado de rutas de negocio
 
-Estado: **catálogo implementado; conexión de handlers pendiente**.
+Estado: **catálogo implementado; conexión de handlers iniciada en la implementación 06**.
 Fecha: 2026-09-01.
 
 ## Objetivo
@@ -46,7 +46,7 @@ El catálogo los marca como deuda de migración. En modo seguro deberán ignorar
 
 ## Falla cerrada
 
-El catálogo no activa todavía la seguridad sobre la demo. Su función en esta entrega es convertir el inventario en una condición verificable y preparar la migración gradual de conexiones.
+El catálogo no activó por sí solo la seguridad sobre la demo. La implementación 06 conecta el primer subconjunto y utiliza este inventario como lista cerrada: las rutas aún no integradas se deniegan cuando el modo seguro está activo.
 
 Antes de habilitar modo seguro:
 

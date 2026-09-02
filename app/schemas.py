@@ -45,7 +45,7 @@ class PeriodificacionRequest(BaseModel):
 
 
 class AprobarRequest(BaseModel):
-    revisada_por: str = Field(min_length=1, max_length=200)
+    revisada_por: str | None = Field(default=None, min_length=1, max_length=200)
     comentario: str | None = Field(default=None, max_length=2000)
     forzar_como_gasto: bool = False
     recordar_alias: bool = False
