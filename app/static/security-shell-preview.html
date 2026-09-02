@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Vista previa · Espacio seguro | Plataforma Financiera</title>
+  <link rel="stylesheet" href="/static/security-shell-preview.css?v=20260902-1">
+</head>
+<body>
+  <div class="preview-banner" role="note">
+    <strong>Vista de diseño</strong>
+    <span>Datos ficticios · no está conectada a la operación ni modifica facturas</span>
+  </div>
+
+  <header class="secure-topbar">
+    <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Abrir navegación" aria-expanded="false">☰</button>
+    <a class="brand" href="#" aria-label="Plataforma Financiera">
+      <span class="brand-mark" aria-hidden="true">PF</span>
+      <span class="brand-name"><strong>Plataforma Financiera</strong><small>Consultora · entorno protegido</small></span>
+    </a>
+
+    <div class="session-summary" aria-label="Estado de sesión">
+      <span class="security-signal"><i aria-hidden="true"></i>Sesión protegida</span>
+      <button class="profile-button" id="profile-button" type="button" aria-expanded="false" aria-controls="profile-menu">
+        <span class="profile-avatar" aria-hidden="true">AD</span>
+        <span><strong>Adriana Duarte</strong><small>Directora de consultora</small></span>
+        <span aria-hidden="true">⌄</span>
+      </button>
+      <div class="profile-menu" id="profile-menu" hidden>
+        <p><strong>Autenticación resistente a phishing</strong><span>Llave física verificada</span></p>
+        <p><strong>Sesión</strong><span>Activa · expira en 7 h 42 min</span></p>
+        <button type="button">Cerrar sesión en este dispositivo</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="secure-shell">
+    <aside class="secure-sidebar" id="sidebar" aria-label="Navegación principal">
+      <nav>
+        <p class="nav-label">Operación</p>
+        <a class="active" href="#bandeja" aria-current="page"><span aria-hidden="true">▦</span><span><strong>Bandeja</strong><small>Revisión de documentos</small></span></a>
+        <a href="#archivo"><span aria-hidden="true">⌕</span><span><strong>Archivo</strong><small>Consultas autorizadas</small></span></a>
+        <a href="#comprobantes"><span aria-hidden="true">＋</span><span><strong>Comprobantes</strong><small>Gastos sin CFDI</small></span></a>
+
+        <p class="nav-label">Información financiera</p>
+        <a href="#resultados"><span aria-hidden="true">▤</span><span><strong>Resultados</strong><small>Ventas, gastos y utilidad</small></span></a>
+        <a href="#reportes"><span aria-hidden="true">▥</span><span><strong>Reportes</strong><small>Exportación controlada</small></span></a>
+
+        <p class="nav-label">Administración</p>
+        <a href="#clientes"><span aria-hidden="true">◇</span><span><strong>Clientes</strong><small>Grupos restauranteros</small></span></a>
+        <a href="#accesos"><span aria-hidden="true">♙</span><span><strong>Usuarios y accesos</strong><small>Asignaciones y sesiones</small></span></a>
+        <a href="#auditoria"><span aria-hidden="true">✓</span><span><strong>Auditoría</strong><small>Actividad y alertas</small></span></a>
+      </nav>
+
+      <section class="sidebar-assurance" aria-label="Garantía de aislamiento">
+        <span aria-hidden="true">✓</span>
+        <div><strong>Contexto aislado</strong><small>Cada solicitud se valida contra cliente, sucursal y sesión.</small></div>
+      </section>
+    </aside>
+    <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="Cerrar navegación"></button>
+
+    <main>
+      <section class="context-panel" aria-labelledby="context-title">
+        <div class="context-heading">
+          <span class="lock-mark" aria-hidden="true">◆</span>
+          <div><small id="context-title">CONTEXTO DE TRABAJO</small><strong>Elige dónde vas a operar</strong></div>
+        </div>
+        <label>
+          <span>Grupo restaurantero</span>
+          <select id="tenant-select" aria-describedby="tenant-help"></select>
+        </label>
+        <label>
+          <span>Sucursal</span>
+          <select id="branch-select"></select>
+        </label>
+        <p class="context-note" id="tenant-help"><i aria-hidden="true"></i><span id="context-note-text"></span></p>
+      </section>
+
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">OPERACIÓN · <span id="active-branch-kicker"></span></p>
+          <h1>Bandeja de validación</h1>
+          <p>Documentos visibles únicamente dentro del contexto seleccionado.</p>
+        </div>
+        <div class="heading-actions">
+          <button class="button secondary" id="scope-details" type="button">Ver mi alcance</button>
+          <button class="button primary" type="button">＋ Cargar documentos</button>
+        </div>
+      </section>
+
+      <section class="scope-strip" aria-label="Alcance activo">
+        <div><span>Grupo activo</span><strong id="active-tenant"></strong></div>
+        <div><span>Sucursal</span><strong id="active-branch"></strong></div>
+        <div><span>Rol efectivo</span><strong>Directora de consultora</strong></div>
+        <div><span>Autenticación</span><strong class="verified">● Llave física</strong></div>
+        <p><span aria-hidden="true">↻</span> Cambiar de grupo reinicia filtros, selecciones y datos en pantalla.</p>
+      </section>
+
+      <section class="metrics" aria-label="Resumen de documentos">
+        <article><div class="metric-icon amber" aria-hidden="true">!</div><div><span id="metric-pending">18</span><p>Por revisar</p><small>5 requieren atención</small></div></article>
+        <article><div class="metric-icon blue" aria-hidden="true">▤</div><div><span>12</span><p>Facturas fiscales</p><small>Dentro del alcance actual</small></div></article>
+        <article><div class="metric-icon red" aria-hidden="true">≡</div><div><span>3</span><p>Posibles duplicados</p><small>Esperan confirmación</small></div></article>
+        <article><div class="metric-icon green" aria-hidden="true">✓</div><div><span>47</span><p>Procesados hoy</p><small>Registro auditable</small></div></article>
+      </section>
+
+      <section class="workspace-grid">
+        <article class="panel queue-panel">
+          <header class="panel-header">
+            <div><h2>Documentos pendientes</h2><p id="queue-caption">18 documentos en la sucursal seleccionada</p></div>
+            <div class="panel-actions"><button type="button">Filtrar</button><button type="button">Actualizar</button></div>
+          </header>
+          <div class="queue-table" role="table" aria-label="Documentos pendientes ficticios">
+            <div class="queue-row queue-head" role="row">
+              <span role="columnheader">Documento</span><span role="columnheader">Proveedor</span><span role="columnheader">Fecha</span><span role="columnheader">Total</span><span role="columnheader">Estado</span><span></span>
+            </div>
+            <div class="queue-row" role="row">
+              <span><strong>FAC-00481</strong><small>Factura fiscal</small></span><span><strong>Proveedor ficticio A</strong><small>RFC simulado</small></span><span>02 sep 2026</span><span class="money">$18,642.00</span><span><mark class="status warning">Revisar</mark></span><button type="button" aria-label="Abrir FAC-00481">Abrir</button>
+            </div>
+            <div class="queue-row" role="row">
+              <span><strong>FAC-00479</strong><small>Factura fiscal</small></span><span><strong>Proveedor ficticio B</strong><small>RFC simulado</small></span><span>02 sep 2026</span><span class="money">$6,318.40</span><span><mark class="status neutral">Extraído</mark></span><button type="button" aria-label="Abrir FAC-00479">Abrir</button>
+            </div>
+            <div class="queue-row" role="row">
+              <span><strong>DOC-00216</strong><small>Ticket de compra</small></span><span><strong>Proveedor ficticio C</strong><small>Sin RFC detectado</small></span><span>01 sep 2026</span><span class="money">$2,906.15</span><span><mark class="status danger">Dato faltante</mark></span><button type="button" aria-label="Abrir DOC-00216">Abrir</button>
+            </div>
+          </div>
+          <footer class="panel-footer"><span>Mostrando 3 de 18</span><button type="button">Ver toda la bandeja →</button></footer>
+        </article>
+
+        <aside class="security-panel panel" aria-labelledby="security-title">
+          <header class="panel-header"><div><p class="eyebrow">PROTECCIÓN ACTIVA</p><h2 id="security-title">Controles de esta sesión</h2></div></header>
+          <ul>
+            <li><span class="check" aria-hidden="true">✓</span><div><strong>Separación por cliente</strong><p>La conexión de datos se determina después de autorizar el grupo.</p></div></li>
+            <li><span class="check" aria-hidden="true">✓</span><div><strong>Restricción por sucursal</strong><p>Lecturas y cambios quedan limitados al alcance seleccionado.</p></div></li>
+            <li><span class="check" aria-hidden="true">✓</span><div><strong>Identidad verificable</strong><p>Los cambios se atribuyen a la sesión; el navegador no elige al actor.</p></div></li>
+            <li><span class="check" aria-hidden="true">✓</span><div><strong>Acciones sensibles</strong><p>Exportar o administrar accesos exige una verificación reciente.</p></div></li>
+          </ul>
+          <div class="audit-note"><span aria-hidden="true">◎</span><p><strong>Auditoría encadenada</strong><br>Los eventos de seguridad no pueden editarse ni eliminarse.</p></div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="scope-dialog">
+    <form method="dialog">
+      <header><div><p class="eyebrow">PERMISOS EFECTIVOS</p><h2>Tu alcance en este contexto</h2></div><button value="close" aria-label="Cerrar">×</button></header>
+      <div class="dialog-body">
+        <p>Los permisos se calculan en el servidor para cada solicitud. Esta pantalla sólo los explica; no puede ampliarlos.</p>
+        <dl>
+          <div><dt>Clientes</dt><dd>Todos los grupos activos de la consultora</dd></div>
+          <div><dt>Sucursales</dt><dd>Todas, dentro del cliente seleccionado</dd></div>
+          <div><dt>Consulta</dt><dd>Habilitada por decisión provisional</dd></div>
+          <div><dt>Cambios</dt><dd>Permitidos y auditados según acción</dd></div>
+          <div><dt>Exportaciones</dt><dd>Requieren llave física y autenticación reciente</dd></div>
+        </dl>
+      </div>
+      <footer><button class="button primary" value="close">Entendido</button></footer>
+    </form>
+  </dialog>
+
+  <script src="/static/security-shell-preview.js?v=20260902-1" defer></script>
+</body>
+</html>

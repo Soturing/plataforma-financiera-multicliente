@@ -11,7 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.config import Settings, get_settings
 from app.security.control_repository import ControlPlaneRepository, SecurityContextNotFound
 from app.security.lifecycle import IdentityLifecycleService, InvitationCommand, LifecycleError
-from app.security.models import SecurityContext
+from app.security.models import IdentityState, SecurityContext, SessionState
 from app.security.models import AuthorizationRequest
 from app.security.authorization import AuthorizationDecision, authorize
 from app.security.oidc import OIDCConfigurationError, OIDCVerificationError, OIDCVerifier
@@ -102,6 +102,27 @@ def get_security_context(
         ) from None
 
 
+def get_control_repository(settings: Settings = Depends(get_settings)) -> ControlPlaneRepository:
+    required = {
+        "control_database_url": settings.control_database_url,
+        "oidc_identity_provider": settings.oidc_identity_provider,
+        "oidc_issuer": settings.oidc_issuer,
+        "oidc_audience": settings.oidc_audience,
+        "oidc_jwks_url": settings.oidc_jwks_url,
+    }
+    if any(not value for value in required.values()):
+        raise HTTPException(status_code=503, detail="La autenticación segura no está configurada")
+    _, repository = _security_services(
+        settings.control_database_url,
+        settings.oidc_identity_provider,
+        settings.oidc_issuer,
+        settings.oidc_audience,
+        settings.oidc_jwks_url,
+        settings.oidc_auth_level_claim,
+    )
+    return repository
+
+
 def require_permission(action: str) -> Callable[..., AuthorizedContext]:
     def dependency(
         x_tenant_id: UUID | None = Header(default=None, alias="X-Tenant-Id"),
@@ -145,6 +166,67 @@ def current_security_context(context: SecurityContext = Depends(get_security_con
                 "valid_until": grant.valid_until,
             }
             for grant in context.grants
+        ],
+    }
+
+
+@router.get("/scope-options")
+def current_scope_options(
+    context: SecurityContext = Depends(get_security_context),
+    repository: ControlPlaneRepository = Depends(get_control_repository),
+):
+    """List only the control-plane labels that the authenticated actor may select."""
+    if context.identity_state is not IdentityState.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "identity_not_active"},
+        )
+    if context.session_state is not SessionState.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "session_not_active"},
+        )
+
+    try:
+        options = repository.load_scope_options(context)
+    except SecurityContextNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credencial no válida",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from None
+
+    return {
+        "actor": {
+            "id": context.actor_id,
+            "display_name": options.actor_display_name,
+            "email": options.actor_email,
+        },
+        "session": {
+            "id": context.session_id,
+            "auth_level": context.auth_level,
+            "authenticated_at": context.authenticated_at,
+        },
+        "tenants": [
+            {
+                "id": tenant.id,
+                "slug": tenant.slug,
+                "display_name": tenant.display_name,
+                "state": tenant.state,
+                "roles": tenant.roles,
+                "modules": tenant.modules,
+                "all_modules": tenant.all_modules,
+                "all_branches": tenant.all_branches,
+                "branches": [
+                    {
+                        "id": branch.id,
+                        "code": branch.code,
+                        "display_name": branch.display_name,
+                    }
+                    for branch in tenant.branches
+                ],
+            }
+            for tenant in options.tenants
         ],
     }
 

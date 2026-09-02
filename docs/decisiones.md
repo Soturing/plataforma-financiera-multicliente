@@ -221,3 +221,13 @@ Estado: aplicada en rama el 2026-09-02; despliegue local pendiente.
 Cada detección conserva una sucursal destino. Una colección limitada sólo expone casos donde la detección, el original y la factura duplicada pertenecen a la sucursal autorizada. Los casos cruzados quedan reservados a responsables con alcance total del tenant. Abrir o descartar vuelve a autorizar todas las sucursales implicadas, y el descarte se trata como acción C2.
 
 Los detalles se conservan en `docs/seguridad/implementacion-09-duplicados.md`.
+
+## D-028 — La pantalla muestra el alcance, pero el servidor lo autoriza
+
+Estado: primera pantalla y contrato implementados en rama el 2026-09-02.
+
+La interfaz obtiene del plano de control únicamente los nombres de clientes y sucursales cubiertos por asignaciones vigentes. Elegir, ocultar o alterar una opción en el navegador nunca concede acceso: cada solicitud vuelve a autorizar la sesión y su alcance en el servidor. Al cambiar de cliente se deben desechar datos, filtros, selecciones y solicitudes pendientes del contexto anterior, y no se conservan tokens en almacenamiento web persistente.
+
+La pantalla inicial se mantiene como vista previa independiente hasta conectar un proveedor OIDC y adaptar la bandeja operativa sin interrumpir el trabajo actual.
+
+Los detalles se conservan en `docs/seguridad/implementacion-10-contexto-interfaz.md`.

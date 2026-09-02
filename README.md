@@ -111,6 +111,8 @@ La política de repositorio prohíbe versionar datos o entregables de clientes. 
 
 La interfaz y sus decisiones operativas están descritas en [docs/ui-v0.1.md](docs/ui-v0.1.md).
 
+La primera vista del shell multi-tenant seguro puede revisarse sin afectar la operación en `http://127.0.0.1:8000/static/security-shell-preview.html`. Sólo contiene datos ficticios; su contrato y reglas están documentados en [docs/seguridad/implementacion-10-contexto-interfaz.md](docs/seguridad/implementacion-10-contexto-interfaz.md).
+
 El módulo móvil de gastos sin CFDI, sus niveles de autorización y su sustitución posterior por factura están descritos en [docs/comprobantes-internos.md](docs/comprobantes-internos.md).
 
 ## Catálogo y aprendizaje supervisado

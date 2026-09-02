@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from uuid import UUID
@@ -23,6 +24,33 @@ from app.security.oidc import OIDCPrincipal
 
 class SecurityContextNotFound(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class BranchScopeOption:
+    id: UUID
+    code: str
+    display_name: str
+
+
+@dataclass(frozen=True)
+class TenantScopeOption:
+    id: UUID
+    slug: str
+    display_name: str
+    state: str
+    roles: tuple[RoleCode, ...]
+    modules: tuple[ModuleCode, ...]
+    all_modules: bool
+    all_branches: bool
+    branches: tuple[BranchScopeOption, ...]
+
+
+@dataclass(frozen=True)
+class ScopeOptions:
+    actor_display_name: str
+    actor_email: str | None
+    tenants: tuple[TenantScopeOption, ...]
 
 
 class ControlPlaneRepository:
@@ -132,6 +160,142 @@ class ControlPlaneRepository:
             auth_level=auth_level,
             authenticated_at=min(session["authenticated_at"], principal.authenticated_at),
             grants=grants,
+        )
+
+    def load_scope_options(self, context: SecurityContext) -> ScopeOptions:
+        """Return labels only for tenant and branch scopes granted to this actor.
+
+        The UI uses data-plane branch IDs because those are the values accepted by
+        X-Branch-Id. Financial catalogs and data-plane connections are deliberately
+        excluded from this pre-selection response.
+        """
+        now = datetime.now(timezone.utc)
+        grants = context.active_grants(now)
+        global_grants = tuple(
+            grant
+            for grant in grants
+            if grant.tenant_id is None
+            and grant.role in {RoleCode.CONSULTING_DIRECTOR, RoleCode.SECURITY_ADMIN}
+        )
+        assigned_tenant_ids = sorted(
+            {grant.tenant_id for grant in grants if grant.tenant_id is not None},
+            key=str,
+        )
+
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            identity = conn.execute(
+                """
+                SELECT i.display_name, i.email
+                  FROM control.identities i
+                  JOIN control.sessions s ON s.identity_id = i.id
+                 WHERE i.id = %s
+                   AND i.state = 'ACTIVA'
+                   AND s.id = %s
+                   AND s.state = 'ACTIVA'
+                   AND s.security_stamp = i.security_stamp
+                   AND s.idle_expires_at > %s
+                   AND s.absolute_expires_at > %s
+                """,
+                (context.actor_id, context.session_id, now, now),
+            ).fetchone()
+            if identity is None:
+                raise SecurityContextNotFound("Identity not found")
+
+            if global_grants:
+                tenant_rows = conn.execute(
+                    """
+                    SELECT id, slug, display_name, state::text AS state
+                      FROM control.tenants
+                     WHERE state IN ('ACTIVO', 'SOLO_LECTURA')
+                     ORDER BY lower(display_name), id
+                    """
+                ).fetchall()
+            elif assigned_tenant_ids:
+                tenant_rows = conn.execute(
+                    """
+                    SELECT id, slug, display_name, state::text AS state
+                      FROM control.tenants
+                     WHERE id = ANY(%s)
+                       AND state IN ('ACTIVO', 'SOLO_LECTURA')
+                     ORDER BY lower(display_name), id
+                    """,
+                    (assigned_tenant_ids,),
+                ).fetchall()
+            else:
+                tenant_rows = []
+
+            visible_tenant_ids = [row["id"] for row in tenant_rows]
+            branch_rows = (
+                conn.execute(
+                    """
+                    SELECT tenant_id, data_plane_branch_id, code, display_name
+                      FROM control.branches
+                     WHERE tenant_id = ANY(%s)
+                       AND active
+                     ORDER BY tenant_id, lower(display_name), data_plane_branch_id
+                    """,
+                    (visible_tenant_ids,),
+                ).fetchall()
+                if visible_tenant_ids
+                else []
+            )
+
+        branches_by_tenant: dict[UUID, list[dict]] = {}
+        for row in branch_rows:
+            branches_by_tenant.setdefault(row["tenant_id"], []).append(row)
+
+        tenant_options: list[TenantScopeOption] = []
+        for tenant in tenant_rows:
+            applicable = global_grants + tuple(
+                grant for grant in grants if grant.tenant_id == tenant["id"]
+            )
+            if not applicable:
+                continue
+
+            all_modules = any(grant.all_modules for grant in applicable)
+            modules = (
+                tuple(ModuleCode)
+                if all_modules
+                else tuple(
+                    sorted(
+                        {module for grant in applicable for module in grant.modules},
+                        key=lambda module: module.value,
+                    )
+                )
+            )
+            all_branches = any(grant.all_branches for grant in applicable)
+            assigned_branch_ids = {
+                branch_id for grant in applicable for branch_id in grant.branch_ids
+            }
+            visible_branches = tuple(
+                BranchScopeOption(
+                    id=row["data_plane_branch_id"],
+                    code=row["code"],
+                    display_name=row["display_name"],
+                )
+                for row in branches_by_tenant.get(tenant["id"], [])
+                if all_branches or row["data_plane_branch_id"] in assigned_branch_ids
+            )
+            tenant_options.append(
+                TenantScopeOption(
+                    id=tenant["id"],
+                    slug=tenant["slug"],
+                    display_name=tenant["display_name"],
+                    state=tenant["state"],
+                    roles=tuple(
+                        sorted({grant.role for grant in applicable}, key=lambda role: role.value)
+                    ),
+                    modules=modules,
+                    all_modules=all_modules,
+                    all_branches=all_branches,
+                    branches=visible_branches,
+                )
+            )
+
+        return ScopeOptions(
+            actor_display_name=identity["display_name"],
+            actor_email=identity["email"],
+            tenants=tuple(tenant_options),
         )
 
 
