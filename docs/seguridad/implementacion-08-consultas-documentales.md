@@ -1,6 +1,6 @@
 # Implementación 08 — Consultas documentales por sucursal
 
-Estado: **búsqueda y archivo conectados; duplicados todavía cerrados**.
+Estado: **búsqueda y archivo conectados; duplicados conectados posteriormente en la implementación 09**.
 Fecha: 2026-09-02.
 
 ## Alcance
@@ -28,6 +28,6 @@ Los permisos de comprobantes internos pasan a ser sensibles a sucursal. Este cri
 
 La prueba de regresión crea documentos sintéticos en `DEMO-A` y `DEMO-B` y verifica que cada filtro devuelva exclusivamente el identificador de la sucursal solicitada.
 
-## Duplicados pendientes
+## Evolución posterior
 
-Las rutas de duplicados no se habilitan todavía. Los duplicados basados sólo en hash conservan archivo y factura original, pero el esquema anterior no registra de forma inequívoca la sucursal destino del archivo rechazado. Antes de exponer esa bandeja se añadirá la vinculación de sucursal y se definirán reglas para ocultar coincidencias que crucen sucursales sin revelar metadatos del documento original.
+El esquema anterior no registraba de forma inequívoca la sucursal destino de un archivo rechazado por hash. La implementación 09 añadió esa vinculación y las reglas que ocultan coincidencias entre sucursales sin revelar metadatos del documento original.

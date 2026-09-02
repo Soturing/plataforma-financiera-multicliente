@@ -86,7 +86,10 @@ PERMISSIONS: dict[str, PermissionSpec] = {
         ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True
     ),
     "documents.duplicates.discard": PermissionSpec(
-        ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True
+        ModuleCode.DOCUMENTS,
+        _roles(D, C),
+        control_level=ControlLevel.C2,
+        branch_scoped=True,
     ),
     # Internal receipts.
     "receipts.read": PermissionSpec(

@@ -33,6 +33,9 @@ from app.security.policy import PERMISSIONS
 SECURED_BUSINESS_ROUTES = frozenset(
     {
         ("POST", "/api/v1/facturas"),
+        ("GET", "/api/v1/duplicados"),
+        ("GET", "/api/v1/duplicados/{duplicado_id}/archivo"),
+        ("POST", "/api/v1/duplicados/descartar"),
         ("POST", "/api/v1/facturas/{factura_id}/procesar-simulado"),
         ("GET", "/api/v1/revision/resumen"),
         ("GET", "/api/v1/revision"),
@@ -175,6 +178,34 @@ class BusinessDataAccess:
             self.require_branch(row["sucursal_id"])
         if target_branch_id is not None:
             self.require_branch(target_branch_id)
+
+    def require_duplicate_branches(self, duplicate_ids: list[UUID]) -> None:
+        if not duplicate_ids:
+            return
+        rows = self.connection.execute(
+            """
+            SELECT d.sucursal_id,
+                   fo.sucursal_id AS original_branch_id,
+                   fd.sucursal_id AS duplicate_branch_id
+              FROM core.documentos_duplicados d
+              JOIN core.facturas fo ON fo.id = d.factura_original_id
+              LEFT JOIN core.facturas fd ON fd.id = d.factura_duplicada_id
+             WHERE d.id = ANY(%s::uuid[]) AND d.estado = 'pendiente'
+            """,
+            (list(set(duplicate_ids)),),
+        ).fetchall()
+        branch_ids = {
+            branch_id
+            for row in rows
+            for branch_id in (
+                row["sucursal_id"],
+                row["original_branch_id"],
+                row["duplicate_branch_id"],
+            )
+            if branch_id is not None
+        }
+        for branch_id in sorted(branch_ids, key=str):
+            self.require_branch(branch_id)
 
 
 def get_optional_business_security_context(

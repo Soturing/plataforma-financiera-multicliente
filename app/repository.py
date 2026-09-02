@@ -106,16 +106,17 @@ def register_hash_duplicate(
     filename: str,
     file_path: str,
     sha256: str,
+    branch_id: UUID,
 ) -> dict[str, Any]:
     return conn.execute(
         """
         INSERT INTO core.documentos_duplicados (
             factura_original_id, archivo_url, archivo_nombre, archivo_sha256,
-            criterio, valor_coincidente
-        ) VALUES (%s, %s, %s, %s, 'sha256', %s)
+            criterio, valor_coincidente, sucursal_id
+        ) VALUES (%s, %s, %s, %s, 'sha256', %s, %s)
         RETURNING id, criterio, estado, archivo_nombre
         """,
-        (original_invoice_id, file_path, filename, sha256, sha256),
+        (original_invoice_id, file_path, filename, sha256, sha256, branch_id),
     ).fetchone()
 
 
@@ -123,6 +124,7 @@ def register_uuid_duplicates(conn: Connection, uuid_fiscal: UUID) -> list[dict[s
     candidates = conn.execute(
         """
         SELECT f.id, f.estado::text, f.archivo_nombre, f.archivo_url,
+               f.sucursal_id,
                f.archivo_sha256, f.archivo_mime, f.recibida_en,
                EXISTS (
                    SELECT 1 FROM core.facturas_finales ff
@@ -152,8 +154,9 @@ def register_uuid_duplicates(conn: Connection, uuid_fiscal: UUID) -> list[dict[s
             """
             INSERT INTO core.documentos_duplicados (
                 factura_original_id, factura_duplicada_id, archivo_url,
-                archivo_nombre, archivo_sha256, criterio, valor_coincidente
-            ) VALUES (%s, %s, %s, %s, %s, 'uuid_fiscal', %s)
+                archivo_nombre, archivo_sha256, criterio, valor_coincidente,
+                sucursal_id
+            ) VALUES (%s, %s, %s, %s, %s, 'uuid_fiscal', %s, %s)
             ON CONFLICT (factura_duplicada_id, criterio)
                 WHERE factura_duplicada_id IS NOT NULL AND estado = 'pendiente'
             DO NOTHING
@@ -162,7 +165,7 @@ def register_uuid_duplicates(conn: Connection, uuid_fiscal: UUID) -> list[dict[s
             (
                 original["id"], duplicate["id"], duplicate["archivo_url"],
                 duplicate["archivo_nombre"], duplicate["archivo_sha256"],
-                str(uuid_fiscal),
+                str(uuid_fiscal), duplicate["sucursal_id"],
             ),
         ).fetchone()
         if row:
@@ -170,7 +173,11 @@ def register_uuid_duplicates(conn: Connection, uuid_fiscal: UUID) -> list[dict[s
     return registered
 
 
-def list_document_duplicates(conn: Connection) -> list[dict[str, Any]]:
+def list_document_duplicates(
+    conn: Connection,
+    *,
+    branch_id: UUID | None = None,
+) -> list[dict[str, Any]]:
     return conn.execute(
         """
         SELECT d.id, d.criterio, d.valor_coincidente, d.detectado_en,
@@ -181,18 +188,28 @@ def list_document_duplicates(conn: Connection) -> list[dict[str, Any]]:
                fo.estado::text AS estado_original,
                COALESCE(p.nombre_normalizado, io.proveedor_propuesto) AS proveedor,
                io.folio, io.fecha_emision, io.total,
-               so.nombre AS sucursal
+               sd.nombre AS sucursal
         FROM core.documentos_duplicados d
         JOIN core.facturas fo ON fo.id = d.factura_original_id
-        JOIN catalog.sucursales so ON so.id = fo.sucursal_id
+        JOIN catalog.sucursales sd ON sd.id = d.sucursal_id
+        LEFT JOIN core.facturas fd ON fd.id = d.factura_duplicada_id
         LEFT JOIN LATERAL (
             SELECT * FROM ai.interpretaciones ix
             WHERE ix.factura_id = fo.id ORDER BY ix.version DESC LIMIT 1
         ) io ON true
         LEFT JOIN catalog.proveedores p ON p.id = io.proveedor_id
         WHERE d.estado = 'pendiente'
+          AND (
+                %s::uuid IS NULL
+                OR (
+                    d.sucursal_id = %s
+                    AND fo.sucursal_id = %s
+                    AND (fd.id IS NULL OR fd.sucursal_id = %s)
+                )
+          )
         ORDER BY d.detectado_en DESC
-        """
+        """,
+        (branch_id, branch_id, branch_id, branch_id),
     ).fetchall()
 
 

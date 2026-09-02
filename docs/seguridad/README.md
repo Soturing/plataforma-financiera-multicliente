@@ -27,6 +27,7 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 - [Implementación 06 — Primer flujo vertical seguro de facturas](implementacion-06-flujo-facturas.md)
 - [Implementación 07 — Dependencias que procesan entradas no confiables](implementacion-07-dependencias.md)
 - [Implementación 08 — Consultas documentales por sucursal](implementacion-08-consultas-documentales.md)
+- [Implementación 09 — Duplicados con frontera de sucursal](implementacion-09-duplicados.md)
 
 ## Regla de implementación
 

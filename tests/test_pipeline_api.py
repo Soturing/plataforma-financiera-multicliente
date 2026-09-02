@@ -8,7 +8,12 @@ from pypdf import PdfWriter
 
 from app.config import get_settings
 from app.main import app
-from app.repository import browse_documents, register_uuid_duplicates, search_documents
+from app.repository import (
+    browse_documents,
+    list_document_duplicates,
+    register_uuid_duplicates,
+    search_documents,
+)
 
 
 def one_page_pdf(label: str) -> bytes:
@@ -83,6 +88,48 @@ def test_bulk_upload_separates_exact_duplicate_until_manual_discard():
         assert discarded.status_code == 200, discarded.text
         assert discarded.json()["descartados"] == 1
         assert all(row["id"] != duplicate_id for row in client.get("/api/v1/duplicados").json())
+    finally:
+        cleanup_test_invoices()
+
+
+def test_cross_branch_duplicate_metadata_is_hidden_from_branch_collections():
+    cleanup_test_invoices()
+    client = TestClient(app)
+    try:
+        same_invoice = one_page_pdf("cross-branch-duplicate")
+        original = client.post(
+            "/api/v1/facturas",
+            data={"sucursal_clave": "DEMO-A", "creada_por": "pytest"},
+            files={"archivo": ("original-a.pdf", BytesIO(same_invoice), "application/pdf")},
+        )
+        assert original.status_code == 201, original.text
+
+        upload = client.post(
+            "/api/v1/documentos/carga-masiva",
+            data={"sucursal_clave": "DEMO-B", "creada_por": "pytest"},
+            files={"archivos": ("detectado-b.pdf", BytesIO(same_invoice), "application/pdf")},
+        )
+        assert upload.status_code == 201, upload.text
+        duplicate_id = upload.json()["duplicados"][0]["id"]
+
+        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+            branch_ids = {
+                row["clave"]: row["id"]
+                for row in conn.execute(
+                    "SELECT id, clave FROM catalog.sucursales WHERE clave IN ('DEMO-A', 'DEMO-B')"
+                ).fetchall()
+            }
+            assert not list_document_duplicates(conn, branch_id=branch_ids["DEMO-A"])
+            assert not list_document_duplicates(conn, branch_id=branch_ids["DEMO-B"])
+            assert {str(row["id"]) for row in list_document_duplicates(conn)} == {
+                duplicate_id
+            }
+
+        discarded = client.post(
+            "/api/v1/duplicados/descartar",
+            json={"duplicado_ids": [duplicate_id], "descartado_por": "pytest"},
+        )
+        assert discarded.status_code == 200, discarded.text
     finally:
         cleanup_test_invoices()
 

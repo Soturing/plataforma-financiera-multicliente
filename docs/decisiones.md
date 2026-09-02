@@ -213,3 +213,11 @@ Estado: aplicada en rama el 2026-09-02.
 Las búsquedas y el archivo combinan facturas y comprobantes internos. Para impedir una fuga lateral entre módulos, requieren simultáneamente `documents.read` y `receipts.read`, y filtran ambas fuentes por la sucursal autorizada. Los permisos de comprobantes internos quedan clasificados como sensibles a sucursal.
 
 Los detalles se conservan en `docs/seguridad/implementacion-08-consultas-documentales.md`.
+
+## D-027 — Una coincidencia duplicada no concede visibilidad sobre otra sucursal
+
+Estado: aplicada en rama el 2026-09-02; despliegue local pendiente.
+
+Cada detección conserva una sucursal destino. Una colección limitada sólo expone casos donde la detección, el original y la factura duplicada pertenecen a la sucursal autorizada. Los casos cruzados quedan reservados a responsables con alcance total del tenant. Abrir o descartar vuelve a autorizar todas las sucursales implicadas, y el descarte se trata como acción C2.
+
+Los detalles se conservan en `docs/seguridad/implementacion-09-duplicados.md`.

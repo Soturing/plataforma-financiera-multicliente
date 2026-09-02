@@ -138,6 +138,12 @@ DOCUMENT_READ_ACCESS = require_business_data_plane("documents.read", DataPlaneAc
 DOCUMENT_ORIGINAL_ACCESS = require_business_data_plane(
     "documents.original.read", DataPlaneAccess.READ
 )
+DOCUMENT_DUPLICATES_READ_ACCESS = require_business_data_plane(
+    "documents.duplicates.read", DataPlaneAccess.READ
+)
+DOCUMENT_DUPLICATES_DISCARD_ACCESS = require_business_data_plane(
+    "documents.duplicates.discard", DataPlaneAccess.WRITE
+)
 DOCUMENT_APPROVE_ACCESS = require_business_data_plane("documents.approve", DataPlaneAccess.WRITE)
 DOCUMENT_EDIT_ACCESS = require_business_data_plane(
     "documents.edit_approved", DataPlaneAccess.WRITE
@@ -229,6 +235,12 @@ async def upload_documents(
 ):
     if not archivos or len(archivos) > 100:
         raise DomainError("Selecciona entre 1 y 100 documentos.", 422)
+    branch = conn.execute(
+        "SELECT id FROM catalog.sucursales WHERE clave = %s AND activa",
+        (sucursal_clave,),
+    ).fetchone()
+    if branch is None:
+        raise DomainError(f"No existe una sucursal activa con clave {sucursal_clave}.", 422)
 
     created = []
     duplicates = []
@@ -250,6 +262,7 @@ async def upload_documents(
                     filename=archivo.filename or path.name,
                     file_path=str(path.resolve()),
                     sha256=digest,
+                    branch_id=branch["id"],
                 )
                 duplicates.append({
                     **duplicate,
@@ -286,17 +299,19 @@ async def upload_documents(
 
 
 @app.get("/api/v1/duplicados", tags=["facturas"])
-def document_duplicates(conn: Connection = Depends(get_connection)):
-    return list_document_duplicates(conn)
+def document_duplicates(
+    access: BusinessDataAccess = Depends(DOCUMENT_DUPLICATES_READ_ACCESS),
+):
+    return list_document_duplicates(access.connection, branch_id=access.branch_id)
 
 
 @app.get("/api/v1/duplicados/{duplicado_id}/archivo", tags=["facturas"])
 def duplicate_file(
     duplicado_id: UUID,
-    conn: Connection = Depends(get_connection),
-    settings: Settings = Depends(get_settings),
+    access: BusinessDataAccess = Depends(DOCUMENT_ORIGINAL_ACCESS),
 ):
-    row = conn.execute(
+    access.require_duplicate_branches([duplicado_id])
+    row = access.connection.execute(
         """
         SELECT archivo_url, archivo_nombre
         FROM core.documentos_duplicados
@@ -307,7 +322,7 @@ def duplicate_file(
     if not row:
         raise DomainError("Duplicado no encontrado.", 404)
     path = Path(row["archivo_url"]).resolve()
-    upload_root = settings.upload_dir.resolve()
+    upload_root = access.upload_dir.resolve()
     if not path.is_relative_to(upload_root) or not path.is_file():
         raise DomainError("El archivo duplicado no está disponible.", 404)
     media_types = {
@@ -329,12 +344,16 @@ def duplicate_file(
 @app.post("/api/v1/duplicados/descartar", tags=["facturas"])
 def discard_duplicates(
     data: DescartarDuplicadosRequest,
-    conn: Connection = Depends(get_connection),
-    settings: Settings = Depends(get_settings),
+    access: BusinessDataAccess = Depends(DOCUMENT_DUPLICATES_DISCARD_ACCESS),
 ):
-    rows = discard_document_duplicates(conn, data.duplicado_ids, data.descartado_por)
-    conn.commit()
-    upload_root = settings.upload_dir.resolve()
+    access.require_duplicate_branches(data.duplicado_ids)
+    rows = discard_document_duplicates(
+        access.connection,
+        data.duplicado_ids,
+        access.actor_reference(data.descartado_por),
+    )
+    access.connection.commit()
+    upload_root = access.upload_dir.resolve()
     removed_files = 0
     for row in rows:
         path = Path(row["archivo_url"]).resolve()

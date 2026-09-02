@@ -73,6 +73,10 @@ def test_production_cannot_start_with_business_security_disabled():
 def test_secure_route_allowlist_is_explicit_and_matches_real_catalog_entries():
     assert SECURED_BUSINESS_ROUTES < set(BUSINESS_ROUTE_POLICIES)
     assert is_secured_business_request("GET", "/api/v1/facturas/00000000-0000-0000-0000-000000000001")
+    assert is_secured_business_request("GET", "/api/v1/duplicados")
+    assert is_secured_business_request(
+        "GET", "/api/v1/duplicados/00000000-0000-0000-0000-000000000001/archivo"
+    )
     assert not is_secured_business_request("GET", "/api/v1/proveedores")
     assert not is_secured_business_request("DELETE", "/api/v1/facturas/00000000-0000-0000-0000-000000000001")
 
@@ -130,6 +134,37 @@ def test_resource_branch_is_authorized_against_session_assignments():
     access.require_branch(assigned_branch)
     with pytest.raises(HTTPException) as caught:
         access.require_branch(other_branch)
+    assert caught.value.status_code == 403
+    assert caught.value.detail["code"] == "branch_not_assigned"
+
+
+def test_cross_branch_duplicate_is_denied_before_it_can_be_resolved():
+    tenant_id, assigned_branch, other_branch = uuid4(), uuid4(), uuid4()
+
+    class DuplicateConnection:
+        def execute(self, *_args, **_kwargs):
+            return self
+
+        def fetchall(self):
+            return [
+                {
+                    "sucursal_id": assigned_branch,
+                    "original_branch_id": other_branch,
+                    "duplicate_branch_id": None,
+                }
+            ]
+
+    access = BusinessDataAccess(
+        connection=DuplicateConnection(),
+        action="documents.duplicates.discard",
+        tenant_id=tenant_id,
+        branch_id=assigned_branch,
+        upload_dir=Path("C:/synthetic/uploads"),
+        security=_security_context(tenant_id, assigned_branch),
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        access.require_duplicate_branches([uuid4()])
     assert caught.value.status_code == 403
     assert caught.value.detail["code"] == "branch_not_assigned"
 
@@ -305,6 +340,48 @@ def test_invoice_upload_uses_session_actor_tenant_branch_and_append_only_audit(t
             },
             files={"archivo": ("factura.jpg", BytesIO(b"synthetic-image"), "image/jpeg")},
         )
+        assert response.status_code == 201, response.text
+        invoice_id = response.json()["id"]
+        duplicate_path = upload_dir / "duplicado-detectado.jpg"
+        duplicate_path.parent.mkdir(parents=True, exist_ok=True)
+        duplicate_path.write_bytes(b"synthetic-duplicate")
+        with psycopg.connect(BUSINESS_DATA_PLANE_TEST_DATABASE_URL) as data_connection:
+            duplicate_id = data_connection.execute(
+                """
+                INSERT INTO core.documentos_duplicados (
+                    factura_original_id, archivo_url, archivo_nombre,
+                    archivo_sha256, criterio, valor_coincidente,
+                    sucursal_id, tenant_id
+                ) VALUES (%s, %s, 'duplicado-detectado.jpg', %s,
+                          'sha256', %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    invoice_id,
+                    str(duplicate_path.resolve()),
+                    sha256(b"synthetic-duplicate").hexdigest(),
+                    sha256(b"synthetic-duplicate").hexdigest(),
+                    branch_id,
+                    tenant_id,
+                ),
+            ).fetchone()[0]
+        business_headers = {
+            "X-Tenant-Id": str(tenant_id),
+            "X-Branch-Id": str(branch_id),
+        }
+        duplicates = client.get("/api/v1/duplicados", headers=business_headers)
+        duplicate_file_response = client.get(
+            f"/api/v1/duplicados/{duplicate_id}/archivo",
+            headers=business_headers,
+        )
+        discarded = client.post(
+            "/api/v1/duplicados/descartar",
+            headers=business_headers,
+            json={
+                "duplicado_ids": [str(duplicate_id)],
+                "descartado_por": "identidad-enviada-por-el-navegador",
+            },
+        )
         denied = client.get(
             f"/api/v1/facturas/{other_invoice_id}",
             headers={
@@ -317,16 +394,26 @@ def test_invoice_upload_uses_session_actor_tenant_branch_and_append_only_audit(t
         app.dependency_overrides.pop(get_optional_business_security_context, None)
         app.dependency_overrides.pop(get_settings, None)
 
-    assert response.status_code == 201, response.text
+    assert duplicates.status_code == 200, duplicates.text
+    assert {item["id"] for item in duplicates.json()} == {str(duplicate_id)}
+    assert duplicate_file_response.status_code == 200
+    assert duplicate_file_response.content == b"synthetic-duplicate"
+    assert discarded.status_code == 200, discarded.text
+    assert discarded.json() == {"descartados": 1, "archivos_eliminados": 1}
+    assert not duplicate_path.exists()
     assert denied.status_code == 403
     assert denied.json()["detail"]["code"] == "branch_not_assigned"
-    invoice_id = response.json()["id"]
     with psycopg.connect(BUSINESS_DATA_PLANE_TEST_DATABASE_URL) as data_connection:
         invoice = data_connection.execute(
             "SELECT creada_por, tenant_id, sucursal_id FROM core.facturas WHERE id = %s",
             (invoice_id,),
         ).fetchone()
+        duplicate_actor = data_connection.execute(
+            "SELECT resuelto_por FROM core.documentos_duplicados WHERE id = %s",
+            (duplicate_id,),
+        ).fetchone()[0]
     assert invoice == (str(actor_id), tenant_id, branch_id)
+    assert duplicate_actor == str(actor_id)
 
     with psycopg.connect(CONTROL_TEST_DATABASE_URL) as control_connection:
         event = control_connection.execute(
