@@ -225,6 +225,29 @@ def test_document_access_is_restricted_to_assigned_branches():
     assert denied.code == "branch_not_assigned"
 
 
+def test_internal_receipt_access_is_restricted_to_assigned_branches():
+    tenant, assigned_branch, other_branch = uuid4(), uuid4(), uuid4()
+    actor = context(
+        grant(
+            RoleCode.CONSULTING_OPERATOR,
+            tenant,
+            ModuleCode.INTERNAL_RECEIPTS,
+            branch_ids=frozenset({assigned_branch}),
+        )
+    )
+
+    assert authorize(
+        actor,
+        request("receipts.read", tenant, branch_id=assigned_branch),
+    ).allowed
+    denied = authorize(
+        actor,
+        request("receipts.read", tenant, branch_id=other_branch),
+    )
+    assert not denied.allowed
+    assert denied.code == "branch_not_assigned"
+
+
 def test_director_c3_action_requires_recent_hardware_key():
     actor = context(
         grant(RoleCode.CONSULTING_DIRECTOR, None, all_modules=True, all_branches=True),

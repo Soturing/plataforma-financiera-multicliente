@@ -40,6 +40,8 @@ SECURED_BUSINESS_ROUTES = frozenset(
         ("GET", "/api/v1/facturas/{factura_id}/expediente"),
         ("GET", "/api/v1/facturas/{factura_id}/archivo"),
         ("GET", "/api/v1/catalogos"),
+        ("GET", "/api/v1/documentos/buscar"),
+        ("GET", "/api/v1/documentos/archivo"),
         ("POST", "/api/v1/facturas/{factura_id}/aprobar"),
         ("POST", "/api/v1/facturas/{factura_id}/corregir"),
         ("POST", "/api/v1/facturas/{factura_id}/editar"),

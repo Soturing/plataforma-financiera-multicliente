@@ -197,3 +197,19 @@ La migración de la demo no habilita rutas mixtas en producción. Cuando el modo
 El modo de compatibilidad se limita por validación a entornos locales o de prueba. La identidad enviada por el navegador puede conservarse temporalmente en el contrato local, pero las rutas seguras la ignoran y escriben el UUID de la sesión.
 
 Los detalles se conservan en `docs/seguridad/implementacion-06-flujo-facturas.md`.
+
+## D-025 — Alertas altas bloquean nuevas entregas funcionales
+
+Estado: aplicada en rama el 2026-09-02.
+
+Una vulnerabilidad alta o crítica en una dependencia que procese archivos, identidad, autorización, cifrado o base de datos se corrige antes de continuar con nuevas rutas, salvo aceptación formal con mitigaciones y caducidad. Las actualizaciones automáticas pueden proponer cambios, pero no se fusionan sin revisión y pruebas aisladas.
+
+Los detalles se conservan en `docs/seguridad/implementacion-07-dependencias.md`.
+
+## D-026 — Una consulta mixta exige permiso para cada módulo expuesto
+
+Estado: aplicada en rama el 2026-09-02.
+
+Las búsquedas y el archivo combinan facturas y comprobantes internos. Para impedir una fuga lateral entre módulos, requieren simultáneamente `documents.read` y `receipts.read`, y filtran ambas fuentes por la sucursal autorizada. Los permisos de comprobantes internos quedan clasificados como sensibles a sucursal.
+
+Los detalles se conservan en `docs/seguridad/implementacion-08-consultas-documentales.md`.

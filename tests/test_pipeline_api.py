@@ -8,7 +8,7 @@ from pypdf import PdfWriter
 
 from app.config import get_settings
 from app.main import app
-from app.repository import register_uuid_duplicates
+from app.repository import browse_documents, register_uuid_duplicates, search_documents
 
 
 def one_page_pdf(label: str) -> bytes:
@@ -227,6 +227,64 @@ def test_pipeline_upload_process_approve():
         assert exported.status_code == 200, exported.text
         assert "analytics-facturas.csv" in exported.headers["content-disposition"]
         assert "Proveedor Ficticio Base" in exported.text
+    finally:
+        cleanup_test_invoices()
+
+
+def test_document_collections_filter_every_source_by_branch():
+    cleanup_test_invoices()
+    client = TestClient(app)
+    try:
+        invoice_ids = {}
+        for branch_key in ("DEMO-A", "DEMO-B"):
+            created = client.post(
+                "/api/v1/facturas",
+                data={"sucursal_clave": branch_key, "creada_por": "pytest"},
+                files={
+                    "archivo": (
+                        f"consulta-{branch_key}.pdf",
+                        BytesIO(one_page_pdf(f"consulta-{branch_key}")),
+                        "application/pdf",
+                    )
+                },
+            )
+            assert created.status_code == 201, created.text
+            invoice_ids[branch_key] = created.json()["id"]
+            processed = client.post(
+                f"/api/v1/facturas/{invoice_ids[branch_key]}/procesar-simulado",
+                json={
+                    "proveedor": "Proveedor Ficticio Base",
+                    "fecha_emision": "2026-09-09",
+                    "subtotal": "100.00",
+                    "iva": "16.00",
+                    "total": "116.00",
+                },
+            )
+            assert processed.status_code == 200, processed.text
+
+        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+            branch_ids = {
+                row["clave"]: row["id"]
+                for row in conn.execute(
+                    "SELECT id, clave FROM catalog.sucursales WHERE clave IN ('DEMO-A', 'DEMO-B')"
+                ).fetchall()
+            }
+            search_a = search_documents(
+                conn,
+                "09092026",
+                branch_id=branch_ids["DEMO-A"],
+            )
+            archive_b = browse_documents(
+                conn,
+                estado="todos",
+                branch_id=branch_ids["DEMO-B"],
+                limit=100,
+            )
+
+        assert {str(row["id"]) for row in search_a} == {invoice_ids["DEMO-A"]}
+        assert invoice_ids["DEMO-B"] not in {str(row["id"]) for row in search_a}
+        assert invoice_ids["DEMO-B"] in {str(row["id"]) for row in archive_b}
+        assert invoice_ids["DEMO-A"] not in {str(row["id"]) for row in archive_b}
     finally:
         cleanup_test_invoices()
 

@@ -26,6 +26,7 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 - [Implementación 05 — Catálogo cerrado de rutas de negocio](implementacion-05-catalogo-rutas.md)
 - [Implementación 06 — Primer flujo vertical seguro de facturas](implementacion-06-flujo-facturas.md)
 - [Implementación 07 — Dependencias que procesan entradas no confiables](implementacion-07-dependencias.md)
+- [Implementación 08 — Consultas documentales por sucursal](implementacion-08-consultas-documentales.md)
 
 ## Regla de implementación
 

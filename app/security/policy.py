@@ -89,25 +89,40 @@ PERMISSIONS: dict[str, PermissionSpec] = {
         ModuleCode.DOCUMENTS, _roles(D, C), branch_scoped=True
     ),
     # Internal receipts.
-    "receipts.read": PermissionSpec(ModuleCode.INTERNAL_RECEIPTS, _roles(D, C, R, F, O)),
+    "receipts.read": PermissionSpec(
+        ModuleCode.INTERNAL_RECEIPTS, _roles(D, C, R, F, O), branch_scoped=True
+    ),
     "receipts.create": PermissionSpec(
-        ModuleCode.INTERNAL_RECEIPTS, _roles(D, C, R, O), conditional_roles=_roles(F)
+        ModuleCode.INTERNAL_RECEIPTS,
+        _roles(D, C, R, O),
+        conditional_roles=_roles(F),
+        branch_scoped=True,
     ),
     "receipts.update": PermissionSpec(
-        ModuleCode.INTERNAL_RECEIPTS, _roles(D, C, R), conditional_roles=_roles(F, O)
+        ModuleCode.INTERNAL_RECEIPTS,
+        _roles(D, C, R),
+        conditional_roles=_roles(F, O),
+        branch_scoped=True,
     ),
     "receipts.approve": PermissionSpec(
         ModuleCode.INTERNAL_RECEIPTS,
         _roles(D, C, R),
         conditional_roles=_roles(F),
         control_level=ControlLevel.C2,
+        branch_scoped=True,
         forbid_resource_owner=True,
     ),
     "receipts.download": PermissionSpec(
-        ModuleCode.INTERNAL_RECEIPTS, _roles(D, C, R, F, O), control_level=ControlLevel.C1
+        ModuleCode.INTERNAL_RECEIPTS,
+        _roles(D, C, R, F, O),
+        control_level=ControlLevel.C1,
+        branch_scoped=True,
     ),
     "receipts.replace": PermissionSpec(
-        ModuleCode.INTERNAL_RECEIPTS, _roles(D, C), conditional_roles=_roles(R, F)
+        ModuleCode.INTERNAL_RECEIPTS,
+        _roles(D, C),
+        conditional_roles=_roles(R, F),
+        branch_scoped=True,
     ),
     # Providers and accounting catalogs.
     "providers.read": PermissionSpec(ModuleCode.PROVIDERS, _roles(D, C, R, F, O)),

@@ -781,7 +781,13 @@ def list_catalogs(conn: Connection) -> dict[str, list[dict[str, Any]]]:
     }
 
 
-def search_documents(conn: Connection, number: str, limit: int = 50) -> list[dict[str, Any]]:
+def search_documents(
+    conn: Connection,
+    number: str,
+    limit: int = 50,
+    *,
+    branch_id: UUID | None = None,
+) -> list[dict[str, Any]]:
     term = number.strip()
     if not term:
         raise DomainError("Escribe un número de factura, nota, ticket o una fecha DDMMYYYY.", 422)
@@ -802,6 +808,7 @@ def search_documents(conn: Connection, number: str, limit: int = 50) -> list[dic
                 WHERE ix.factura_id = f.id ORDER BY ix.version DESC LIMIT 1
             ) i ON true
             LEFT JOIN catalog.proveedores p ON p.id = i.proveedor_id
+            WHERE (%s::uuid IS NULL OR f.sucursal_id = %s)
 
             UNION ALL
 
@@ -812,13 +819,14 @@ def search_documents(conn: Connection, number: str, limit: int = 50) -> list[dic
             FROM core.comprobantes_internos ci
             JOIN catalog.sucursales s ON s.id = ci.sucursal_id
             JOIN catalog.proveedores p ON p.id = ci.proveedor_id
+            WHERE (%s::uuid IS NULL OR ci.sucursal_id = %s)
         )
         SELECT * FROM documentos
         WHERE lower(numero_documento) LIKE lower(%s)
         ORDER BY (lower(numero_documento) = lower(%s)) DESC, fecha DESC NULLS LAST
         LIMIT %s
         """,
-        (f"%{term}%", term, limit),
+        (branch_id, branch_id, branch_id, branch_id, f"%{term}%", term, limit),
     ).fetchall()
 
 
@@ -831,6 +839,7 @@ def browse_documents(
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     limit: int = 20,
+    branch_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
     term = (query or "").strip()
     pattern = f"%{term}%"
@@ -859,6 +868,7 @@ def browse_documents(
                 SELECT tipo FROM core.clasificaciones_documentales cx
                 WHERE cx.factura_id = f.id ORDER BY cx.version DESC LIMIT 1
             ) cd ON true
+            WHERE (%s::uuid IS NULL OR f.sucursal_id = %s)
 
             UNION ALL
 
@@ -871,6 +881,7 @@ def browse_documents(
             FROM core.comprobantes_internos ci
             JOIN catalog.sucursales s ON s.id = ci.sucursal_id
             JOIN catalog.proveedores p ON p.id = ci.proveedor_id
+            WHERE (%s::uuid IS NULL OR ci.sucursal_id = %s)
         )
         SELECT * FROM documentos
         WHERE (%s = '' OR lower(concat_ws(' ', numero_documento, numero_origen, proveedor, archivo_nombre)) LIKE lower(%s))
@@ -885,6 +896,8 @@ def browse_documents(
         LIMIT %s
         """,
         (
+            branch_id, branch_id,
+            branch_id, branch_id,
             term, pattern,
             estado, estado, estado, estado, estado,
             sucursal_clave, sucursal_clave,

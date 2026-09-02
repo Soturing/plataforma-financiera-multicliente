@@ -86,8 +86,12 @@ BUSINESS_ROUTE_POLICIES: dict[tuple[str, str], BusinessRoutePolicy] = {
     ("GET", "/api/v1/catalogos"): _policy(
         "providers.read", R, TENANT, additional_actions=("accounting_catalogs.read",)
     ),
-    ("GET", "/api/v1/documentos/buscar"): _policy("documents.read", R, COLLECTION),
-    ("GET", "/api/v1/documentos/archivo"): _policy("documents.read", R, QUERY),
+    ("GET", "/api/v1/documentos/buscar"): _policy(
+        "documents.read", R, COLLECTION, additional_actions=("receipts.read",)
+    ),
+    ("GET", "/api/v1/documentos/archivo"): _policy(
+        "documents.read", R, QUERY, additional_actions=("receipts.read",)
+    ),
     ("POST", "/api/v1/comprobantes-internos"): _policy(
         "receipts.create",
         W,

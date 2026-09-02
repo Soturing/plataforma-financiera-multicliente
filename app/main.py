@@ -498,9 +498,15 @@ def catalogs(access: BusinessDataAccess = Depends(CATALOG_READ_ACCESS)):
 def find_documents(
     numero: str = Query(min_length=1, max_length=100),
     limit: int = Query(default=50, ge=1, le=100),
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_READ_ACCESS),
 ):
-    return search_documents(conn, numero, limit)
+    access.require_action("receipts.read")
+    return search_documents(
+        access.connection,
+        numero,
+        limit,
+        branch_id=access.branch_id,
+    )
 
 
 @app.get("/api/v1/documentos/archivo", tags=["documentos"])
@@ -511,18 +517,23 @@ def document_archive(
     fecha_desde: date | None = Query(default=None),
     fecha_hasta: date | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
-    conn: Connection = Depends(get_connection),
+    access: BusinessDataAccess = Depends(DOCUMENT_READ_ACCESS),
 ):
     if fecha_desde and fecha_hasta and fecha_desde > fecha_hasta:
         raise DomainError("La fecha inicial no puede ser posterior a la fecha final.", 422)
+    branch_id = access.branch_id
+    if sucursal_clave is not None:
+        branch_id = access.require_branch_key(sucursal_clave)
+    access.require_action("receipts.read", branch_id=branch_id)
     return browse_documents(
-        conn,
+        access.connection,
         query=q,
         estado=estado,
         sucursal_clave=sucursal_clave,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         limit=limit,
+        branch_id=branch_id,
     )
 
 
