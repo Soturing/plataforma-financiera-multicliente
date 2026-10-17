@@ -10,7 +10,7 @@ La documentación ejecutable completa está disponible en `/docs` cuando el back
 
 Formulario multipart:
 
-- `archivo`: JPG, PNG, WEBP o PDF; máximo 15 MB.
+- `archivo`: JPG, PNG, WEBP o PDF; máximo 100 MB.
 - `sucursal_clave`: por ahora `DEMO-01`.
 - `creada_por`: nombre o identificador del capturista.
 
@@ -125,7 +125,7 @@ Cada campo modificado se registra por separado en `audit.correcciones`.
 
 Formulario multipart:
 
-- `archivo`: PDF, máximo 15 MB y 200 páginas por defecto;
+- `archivo`: PDF, máximo 100 MB y 200 páginas por defecto;
 - `sucursal_clave`;
 - `creada_por`.
 

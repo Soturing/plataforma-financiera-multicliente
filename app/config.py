@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str
     upload_dir: Path = Path("data/uploads")
-    max_upload_bytes: int = 40 * 1024 * 1024
+    max_upload_bytes: int = 100 * 1024 * 1024
     max_pdf_pages: int = 200
     allowed_mime_types: frozenset[str] = frozenset(
         {
