@@ -18,6 +18,30 @@ from app.provider_catalog import (
 from app.repository import register_uuid_duplicates
 
 
+def reading_context(conn: Connection) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """RFC y nombres propios del grupo (receptores, nunca proveedor) y RFC de proveedores conocidos."""
+    branches = conn.execute(
+        """
+        SELECT rfc, razon_social, nombre, restaurante, aliases
+        FROM catalog.sucursales WHERE activa AND clave <> 'POR-ASIGNAR'
+        """
+    ).fetchall()
+    own_rfcs: list[str] = []
+    own_names: list[str] = []
+    for branch in branches:
+        if branch["rfc"]:
+            own_rfcs.append(branch["rfc"].upper())
+        for value in (branch["razon_social"], branch["nombre"], branch["restaurante"], *(branch["aliases"] or [])):
+            if value and len(str(value).strip()) >= 4 and str(value) not in own_names:
+                own_names.append(str(value))
+    known = tuple(
+        row["rfc"].upper() for row in conn.execute(
+            "SELECT DISTINCT rfc FROM catalog.proveedores WHERE rfc IS NOT NULL AND activo"
+        ).fetchall()
+    )
+    return tuple(dict.fromkeys(own_rfcs)), tuple(own_names), known
+
+
 def persist_ocr_result(
     conn: Connection,
     invoice_id: UUID,
@@ -49,8 +73,13 @@ def persist_ocr_result(
     ).fetchone()["id"]
     conn.execute("UPDATE core.facturas SET estado = 'ocr_completado' WHERE id = %s", (invoice_id,))
 
-    fields = extract_invoice_fields(document.text)
-    classification = classify_document(document.text)
+    own_rfcs, own_names, known_rfcs = reading_context(conn)
+    qr_list = document.raw.get("qr_sat") if isinstance(document.raw, dict) else None
+    fields = extract_invoice_fields(
+        document.text, own_rfcs=own_rfcs, own_names=own_names, known_rfcs=known_rfcs,
+        qr=(qr_list[0] if qr_list else None),
+    )
+    classification = classify_document(document.text, has_sat_qr=bool(qr_list))
     save_classification(conn, invoice_id, classification)
     provider_id = None
     original_provider_proposal = fields.get("proveedor_propuesto")

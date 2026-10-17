@@ -122,7 +122,8 @@ def test_uuid_duplicate_is_removed_from_review_queue():
             registered = register_uuid_duplicates(conn, fiscal_uuid)
             assert len(registered) == 1
 
-        queue_ids = {row["id"] for row in client.get("/api/v1/revision").json()}
+        queue = client.get("/api/v1/revision", params={"limit": 200, "orden": "recientes"}).json()
+        queue_ids = {row["id"] for row in queue}
         assert len(queue_ids.intersection(invoice_ids)) == 1
         duplicate = next(
             row for row in client.get("/api/v1/duplicados").json()

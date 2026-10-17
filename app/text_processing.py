@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Callable
 from xml.etree import ElementTree as ET
 
+import fitz
 from pypdf import PdfReader
 
+from app import qr_sat
 from app.ocr.base import OcrDocument, OcrEngine, OcrLine
 from app.ocr.paddle_engine import get_ocr_engine
 
@@ -29,15 +31,48 @@ class HybridTextEngine:
         if source.suffix.lower() == ".xml":
             return self._read_cfdi_xml(source)
         if source.suffix.lower() != ".pdf":
-            return self.ocr_factory().read(path)
+            return self._with_qr(self.ocr_factory().read(path), path)
 
         native = self._read_native_pdf(source)
         pages = native.raw["pages"]
-        if pages and all(
-            page["characters"] >= self.min_characters_per_page for page in pages
+        # Los PDF de apps de escaneo (CamScanner, etc.) traen una capa de texto pobre o girada que
+        # parece "suficiente": si la página es una foto, se lee la imagen en lugar de confiar en ella.
+        if (
+            pages
+            and all(page["characters"] >= self.min_characters_per_page for page in pages)
+            and not self._looks_scanned(source)
         ):
-            return native
-        return self.ocr_factory().read(path)
+            return self._with_qr(native, path)
+        return self._with_qr(self.ocr_factory().read(path), path)
+
+    @staticmethod
+    def _looks_scanned(path: Path, coverage: float = 0.6) -> bool:
+        """True si la mayoría de las páginas son una imagen que cubre (casi) toda la hoja."""
+        try:
+            with fitz.open(path) as document:
+                scanned = 0
+                for page in document:
+                    page_area = max(page.rect.width * page.rect.height, 1.0)
+                    largest = max(
+                        (abs(fitz.Rect(info["bbox"]).width * fitz.Rect(info["bbox"]).height)
+                         for info in page.get_image_info()),
+                        default=0.0,
+                    )
+                    scanned += largest / page_area >= coverage
+                return bool(len(document)) and scanned / len(document) >= 0.5
+        except Exception:
+            return False
+
+    @staticmethod
+    def _with_qr(document: OcrDocument, path: str) -> OcrDocument:
+        """Adjunta el QR del SAT (si lo hay) a `raw["qr_sat"]`; no depende del OCR."""
+        try:
+            qr = qr_sat.read_file(path)
+        except Exception:
+            qr = []
+        if qr:
+            document.raw["qr_sat"] = qr
+        return document
 
     @staticmethod
     def _read_cfdi_xml(path: Path) -> OcrDocument:
