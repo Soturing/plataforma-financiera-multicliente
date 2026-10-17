@@ -10,6 +10,7 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.errors import DomainError
+from app.commissions import weekly_commissions
 
 
 def _clean_key(value: str) -> str:
@@ -519,37 +520,6 @@ def _financial_metrics(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _estimated_sales_commissions(row: dict[str, Any]) -> list[dict[str, Any]]:
-    """Calcula provisiones semanales a centavos a partir del desglose de ventas."""
-    cents = Decimal("0.01")
-    visa = Decimal(row.get("visa") or 0)
-    amex = Decimal(row.get("amex") or 0)
-    rappi = Decimal(row.get("rappi") or 0)
-    uber = Decimal(row.get("uber") or 0)
-    credit = visa + amex
-    estimates = [
-        ("TERMINALES VISA", visa, Decimal("0.026")),
-        ("TERMINALES AMEX", amex, Decimal("0.038")),
-        ("COMISION BANCO", credit, Decimal("0.022")),
-    ]
-    if row["sucursal_clave"] in {"DEMO-A", "DEMO-B"}:
-        estimates.append(("COMISIONES APLICACIONES", uber, Decimal("0.31")))
-        estimates.append(("COMISIONES APLICACIONES", rappi, Decimal("0.36")))
-    result = []
-    for concept, base, rate in estimates:
-        amount = (base * rate).quantize(cents, rounding=ROUND_HALF_UP)
-        if amount:
-            result.append({
-                "concepto": concept,
-                "base": base,
-                "tasa": rate,
-                "monto": amount,
-                "canal": "UBER" if concept == "COMISIONES APLICACIONES" and rate == Decimal("0.31")
-                         else "RAPPI" if concept == "COMISIONES APLICACIONES" else None,
-            })
-    return result
-
-
 def _provision_period(reference: date, periodicity: str) -> tuple[date, date, int]:
     if periodicity == "semanal":
         start = reference - timedelta(days=reference.weekday())
@@ -720,30 +690,15 @@ def get_weekly_statement(
         for row in rows
     ]
     week_start = date.fromisocalendar(anio_iso, semana_iso, 1)
-    commission_sources = conn.execute(
-        """
-        SELECT s.clave AS sucursal_clave, s.nombre AS sucursal,
-               sum(v.visa)::numeric(14,2) AS visa,
-               sum(v.amex)::numeric(14,2) AS amex,
-               sum(v.rappi)::numeric(14,2) AS rappi,
-               sum(v.uber)::numeric(14,2) AS uber
-        FROM finance.ventas v
-        JOIN catalog.sucursales s ON s.id = v.sucursal_id
-        WHERE v.fecha BETWEEN %s AND %s
-          AND (%s::text IS NULL OR s.clave = %s)
-        GROUP BY s.clave, s.nombre
-        """,
-        (week_start, week_end, sucursal_clave, sucursal_clave),
-    ).fetchall()
-    commission_detail: list[dict[str, Any]] = []
+    commission_detail = weekly_commissions(
+        conn, anio_iso=anio_iso, semana_iso=semana_iso, sucursal_clave=sucursal_clave,
+        branches={row["sucursal_clave"] for row in rows},
+    )
     commissions_by_branch: dict[str, Decimal] = {}
-    for source in commission_sources:
-        estimates = _estimated_sales_commissions(dict(source))
-        commissions_by_branch[source["sucursal_clave"]] = sum(
-            (item["monto"] for item in estimates), Decimal("0")
+    for item in commission_detail:
+        commissions_by_branch[item["sucursal_clave"]] = (
+            commissions_by_branch.get(item["sucursal_clave"], Decimal("0")) + item["monto"]
         )
-        for item in estimates:
-            commission_detail.append({**dict(source), **item})
     detail = [
         _financial_metrics({
             **item,
@@ -823,12 +778,12 @@ def get_weekly_statement(
         expense_detail.setdefault(group, []).append(dict(row))
     for index, item in enumerate(commission_detail, start=1):
         amount = Decimal(item["monto"])
-        expense_map["variables"] = expense_map.get("variables", Decimal("0")) + amount
+        expense_map["comisiones"] = expense_map.get("comisiones", Decimal("0")) + amount
         channel = f" {item['canal']}" if item.get("canal") else ""
-        expense_detail.setdefault("variables", []).append({
-            "grupo": "variables",
+        expense_detail.setdefault("comisiones", []).append({
+            "grupo": "comisiones",
             "movimiento_id": None,
-            "tipo_documento": "provision_estimada",
+            "tipo_documento": "provision_estimada" if item["estimado"] else "cierre_real",
             "documento_origen_id": None,
             "proveedor": f"{item['concepto']}{channel}",
             "fecha": week_start,
@@ -839,13 +794,16 @@ def get_weekly_statement(
             "folio": f"COMISION-{anio_iso}-S{semana_iso:02d}-{index}",
             "sucursal_clave": item["sucursal_clave"],
             "sucursal": item["sucursal"],
-            "categoria": "VARIABLES",
+            "categoria": "COMISIONES",
             "subcategoria": item["concepto"],
             "total_documento": amount,
             "monto_aplicado": amount,
-            "pago": "Estimación basada en ventas e histórico; sujeta a sustitución al cierre mensual",
-            "periodificado": True,
-            "estimado": True,
+            "pago": (
+                "Proyección según porcentaje; se sustituye con el cierre real del mes"
+                if item["estimado"] else "Importe real de cierre mensual"
+            ),
+            "periodificado": not item["estimado"],
+            "estimado": item["estimado"],
             "base_calculo": item["base"],
             "tasa": item["tasa"],
         })
@@ -905,6 +863,7 @@ def get_weekly_statement(
         "bar": expense_map.get("bar", Decimal("0")),
         "restaurante": expense_map.get("restaurante", Decimal("0")),
         "mantenimiento": expense_map.get("mantenimiento", Decimal("0")),
+        "comisiones": expense_map.get("comisiones", Decimal("0")),
         "variables": expense_map.get("variables", Decimal("0")),
         "gasolina": expense_map.get("gasolina", Decimal("0")),
         "imprevistos": expense_map.get("imprevistos", Decimal("0")),

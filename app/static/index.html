@@ -425,6 +425,27 @@
           <div class="panel-title"><div><h2>Evolución semanal</h2><p>Ventas y utilidad operativa de las últimas semanas disponibles.</p></div></div>
           <div id="finance-trend" class="finance-trend"></div>
         </section>
+        <details class="panel finance-wide commission-panel collapsible-panel" id="commission-panel">
+          <summary class="panel-title"><div><h2>Comisiones del mes</h2><p id="commission-period-label">Proyección por porcentaje y cierre real mensual.</p></div><span class="expand-label">Ver comisiones</span></summary>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table finance-table">
+              <thead><tr><th>Sucursal</th><th>Concepto</th><th class="numeric">Proyectado</th><th class="numeric">Real del mes</th><th class="numeric">Diferencia</th><th></th></tr></thead>
+              <tbody id="commission-rows"></tbody>
+            </table>
+          </div>
+          <h3>Porcentajes de proyección</h3>
+          <form id="commission-parameter-form" class="mini-catalog-form">
+            <select name="concepto" required>
+              <option value="VISA">Terminal Visa</option><option value="AMEX">Terminal Amex</option>
+              <option value="BANCO">Banco</option><option value="APPS">Apps</option><option value="SERVICIOS">Servicios</option>
+            </select>
+            <select name="canal"><option value="">Sin canal</option><option value="UBER">Uber</option><option value="RAPPI">Rappi</option></select>
+            <select name="base" required></select>
+            <input name="valor" type="number" step="0.0001" min="0" required placeholder="% o monto">
+            <div><button class="button primary small">Guardar</button></div>
+          </form>
+          <div id="commission-parameters" class="mini-catalog"></div>
+        </details>
         <details class="panel finance-wide sales-breakdown-panel collapsible-panel">
           <summary class="panel-title"><div><h2>Desglose diario de ventas</h2><p>Abre para ver o capturar métodos de pago, familias, visitas y diferencias.</p></div><span class="expand-label">Ver desglose</span><span id="sales-edit-state" class="badge warning">Seleccione una sucursal</span></summary>
           <div id="sales-scope-summary" class="sales-scope-summary"></div>

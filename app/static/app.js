@@ -159,6 +159,99 @@ async function renderFinanceDashboard() {
   await loadFinanceStatement(!savedPeriod.has("anio_iso"));
 }
 
+const COMMISSION_BASES = {
+  visa: "Ventas Visa", amex: "Ventas Amex", credito: "Ventas con crédito (Visa + Amex)",
+  uber: "Ventas Uber", rappi: "Ventas Rappi", ventas_netas: "Ventas netas", monto_mensual: "Monto fijo mensual",
+};
+
+async function loadCommissionPanel(requestId) {
+  const body = document.querySelector("#commission-rows");
+  if (!body || !financeData) return;
+  const monday = new Date(`${financeData.periodo.fecha_desde}T00:00:00`);
+  const thursday = new Date(monday.getTime() + 3 * 86400000);
+  const year = thursday.getFullYear();
+  const month = thursday.getMonth() + 1;
+  const branch = document.querySelector("#finance-branch").value;
+  const query = new URLSearchParams({anio: year, mes: month});
+  if (branch) query.set("sucursal_clave", branch);
+  const [summary, parameters] = await Promise.all([
+    api(`/api/v1/finanzas/comisiones/mes?${query}`),
+    api(`/api/v1/finanzas/comisiones/parametros${branch ? `?sucursal_clave=${encodeURIComponent(branch)}` : ""}`),
+  ]);
+  if (requestId !== financeLoadSequence) return;
+  document.querySelector("#commission-period-label").textContent =
+    `Mes ${String(month).padStart(2, "0")}/${year}: la proyección usa los porcentajes; el importe real sustituye a la proyección.`;
+  body.innerHTML = summary.map(row => `
+    <tr>
+      <td>${escapeHtml(row.sucursal)}</td><td>${escapeHtml(row.concepto_nombre)}</td>
+      <td class="numeric">${money.format(row.proyectado)}</td>
+      <td class="numeric"><input type="number" step="0.01" min="0" class="inline-input" data-closing-input="${escapeHtml(row.sucursal_clave)}|${row.concepto}" value="${row.real ?? ""}" placeholder="Sin cierre"></td>
+      <td class="numeric">${row.diferencia == null ? "—" : money.format(row.diferencia)}</td>
+      <td><button class="button ghost small" data-closing-save="${escapeHtml(row.sucursal_clave)}|${row.concepto}">Guardar</button></td>
+    </tr>`).join("") || '<tr><td colspan="6"><div class="empty">Configure porcentajes para proyectar comisiones.</div></td></tr>';
+  body.querySelectorAll("[data-closing-save]").forEach(button => button.onclick = async () => {
+    const [branchKey, concept] = button.dataset.closingSave.split("|");
+    const value = body.querySelector(`[data-closing-input="${branchKey}|${concept}"]`).value;
+    try {
+      await api("/api/v1/finanzas/comisiones/cierre", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          sucursal_clave: branchKey, concepto: concept, anio: year, mes: month,
+          importe_real: value === "" ? null : value, actualizado_por: operator(),
+        }),
+      });
+      notify(value === "" ? "Cierre eliminado; vuelve la proyección" : "Cierre real guardado");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+
+  const form = document.querySelector("#commission-parameter-form");
+  form.elements.base.innerHTML = Object.entries(COMMISSION_BASES).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (!branch) { notify("Seleccione una sucursal para editar sus porcentajes", true); return; }
+    const fixed = form.elements.base.value === "monto_mensual";
+    const value = form.elements.valor.value;
+    try {
+      await api("/api/v1/finanzas/comisiones/parametros", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          sucursal_clave: branch, concepto: form.elements.concepto.value,
+          canal: form.elements.canal.value || null, base: form.elements.base.value,
+          porcentaje: fixed ? null : String(Number(value) / 100),
+          monto_mensual: fixed ? value : null, actualizado_por: operator(),
+        }),
+      });
+      notify("Parámetro de comisión guardado");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+  const list = document.querySelector("#commission-parameters");
+  list.innerHTML = branch ? (parameters.map(item => `
+    <div class="mini-catalog-row"><strong>${escapeHtml(COMMISSION_LABELS[item.concepto])}${item.canal ? ` · ${escapeHtml(item.canal)}` : ""}</strong>
+      <small>${escapeHtml(COMMISSION_BASES[item.base])} · ${item.base === "monto_mensual" ? money.format(item.monto_mensual) : `${(Number(item.porcentaje) * 100).toFixed(2)}%`}</small>
+      <button class="button ghost small" type="button" data-delete-parameter="${item.id}">Quitar</button></div>`).join("")
+    || '<div class="empty">Sin porcentajes configurados para esta sucursal.</div>')
+    : '<div class="empty">Seleccione una sucursal para ver y editar sus porcentajes.</div>';
+  list.querySelectorAll("[data-delete-parameter]").forEach(button => button.onclick = async () => {
+    try {
+      await api(`/api/v1/finanzas/comisiones/parametros/${button.dataset.deleteParameter}`, {method: "DELETE"});
+      notify("Parámetro eliminado");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+}
+
+const COMMISSION_LABELS = {
+  VISA: "Terminal Visa", AMEX: "Terminal Amex", BANCO: "Banco", APPS: "Apps", SERVICIOS: "Servicios",
+};
+
 function downloadWeeklyPurchaseReport() {
   downloadWeeklyReport("/api/v1/finanzas/reporte-compras.pdf");
 }
@@ -447,6 +540,8 @@ async function loadFinanceStatement(useLatest = false) {
     renderFinanceStatement(loadedFinance);
     await loadSalesBreakdown(requestId);
     if (requestId !== financeLoadSequence) return;
+    await loadCommissionPanel(requestId);
+    if (requestId !== financeLoadSequence) return;
     const persisted = new URLSearchParams({
       anio_iso: String(loadedFinance.periodo.anio_iso),
       semana_iso: String(loadedFinance.periodo.semana_iso),
@@ -536,7 +631,8 @@ function renderFinanceStatement(data) {
     ["GASTOS BAR", expenses.bar, "expense", amountPercent(expenses.bar, beverageSales), "Venta de bebidas"],
     ["GASTOS RESTAURANTE", expenses.restaurante, "expense", amountPercent(expenses.restaurante, foodSales), "Venta de alimentos"],
     ["GASTOS MANTENIMIENTO", expenses.mantenimiento, "expense", amountPercent(expenses.mantenimiento, foodAndBeverageSales), "Venta alimentos + bebidas"],
-    ["GASTOS VARIABLES OPERATIVOS Y COMISIONES", expenses.variables, "expense", amountPercent(expenses.variables, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS COMISIONES", expenses.comisiones, "expense", amountPercent(expenses.comisiones, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS VARIABLES OPERATIVOS", expenses.variables, "expense", amountPercent(expenses.variables, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["GASTOS GASOLINA", expenses.gasolina, "expense", amountPercent(expenses.gasolina, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["GASTOS IMPREVISTOS", expenses.imprevistos, "expense", amountPercent(expenses.imprevistos, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["TOTAL GASTOS", expenses.total, "subtotal expense-total", amountPercent(expenses.total, foodAndBeverageSales), "Venta alimentos + bebidas"],
@@ -583,11 +679,12 @@ function renderFinanceExpenseDetail(data) {
     bar: "Barra",
     restaurante: "Restaurante",
     mantenimiento: "Mantenimiento",
-    variables: "Variables operativos y comisiones",
+    comisiones: "Comisiones",
+    variables: "Variables operativos",
     gasolina: "Gasolina",
     imprevistos: "Imprevistos",
   };
-  const order = ["fijos", "nomina", "bar", "restaurante", "mantenimiento", "variables", "gasolina", "imprevistos"];
+  const order = ["fijos", "nomina", "comisiones", "bar", "restaurante", "mantenimiento", "variables", "gasolina", "imprevistos"];
   const sections = order.filter(key => (groups[key] || []).length || Number(totals[key] || 0));
   if (!sections.length) {
     container.innerHTML = '<div class="empty">No hay gastos aplicados en este periodo.</div>';

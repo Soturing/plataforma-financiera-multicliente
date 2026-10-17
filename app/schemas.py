@@ -206,6 +206,25 @@ class GastoFijoRequest(BaseModel):
     actualizado_por: str = Field(min_length=1, max_length=200)
 
 
+class ComisionParametroRequest(BaseModel):
+    sucursal_clave: str = Field(min_length=1, max_length=50)
+    concepto: Literal["VISA", "AMEX", "BANCO", "APPS", "SERVICIOS"]
+    canal: Literal["UBER", "RAPPI"] | None = None
+    base: Literal["visa", "amex", "credito", "uber", "rappi", "ventas_netas", "monto_mensual"]
+    porcentaje: Decimal | None = Field(default=None, ge=0, le=1, decimal_places=6)
+    monto_mensual: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
+class ComisionCierreRequest(BaseModel):
+    sucursal_clave: str = Field(min_length=1, max_length=50)
+    concepto: Literal["VISA", "AMEX", "BANCO", "APPS", "SERVICIOS"]
+    anio: int = Field(ge=2000, le=2100)
+    mes: int = Field(ge=1, le=12)
+    importe_real: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
 class VentaManualRequest(BaseModel):
     sucursal_id: UUID
     fecha: date

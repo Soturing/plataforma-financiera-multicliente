@@ -72,6 +72,8 @@ from app.schemas import (
     ProveedorCatalogoRequest,
     SubcategoriaCatalogoRequest,
     GastoFijoRequest,
+    ComisionParametroRequest,
+    ComisionCierreRequest,
     EliminarDocumentosRequest,
     EliminarLoteRequest,
     CancelarLoteRequest,
@@ -105,6 +107,9 @@ from app.jobs import is_batch_active, start_batch_job, start_invoice_job
 from app.classification import reclassify_batch
 from app.provider_template import build_provider_template
 from app.fixed_expenses import list_fixed_expenses, save_fixed_expense
+from app.commissions import (
+    delete_parameter, list_parameters, monthly_summary, save_closing, save_parameter,
+)
 from app.provider_catalog import (
     apply_provider_import,
     list_providers,
@@ -676,6 +681,50 @@ def upsert_fixed_expense(
     payload = data.model_dump(mode="python")
     actor = payload.pop("actualizado_por")
     return save_fixed_expense(conn, payload, actor)
+
+
+@app.get("/api/v1/finanzas/comisiones/parametros", tags=["finanzas"])
+def commission_parameters(
+    sucursal_clave: str | None = Query(default=None),
+    conn: Connection = Depends(get_connection),
+):
+    return list_parameters(conn, sucursal_clave)
+
+
+@app.post("/api/v1/finanzas/comisiones/parametros", tags=["finanzas"])
+def upsert_commission_parameter(
+    data: ComisionParametroRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_parameter(conn, payload, actor)
+
+
+@app.delete("/api/v1/finanzas/comisiones/parametros/{parameter_id}", tags=["finanzas"])
+def remove_commission_parameter(parameter_id: UUID, conn: Connection = Depends(get_connection)):
+    delete_parameter(conn, parameter_id)
+    return {"eliminado": True}
+
+
+@app.get("/api/v1/finanzas/comisiones/mes", tags=["finanzas"])
+def commission_month(
+    anio: int = Query(ge=2000, le=2100),
+    mes: int = Query(ge=1, le=12),
+    sucursal_clave: str | None = Query(default=None),
+    conn: Connection = Depends(get_connection),
+):
+    return monthly_summary(conn, anio=anio, mes=mes, sucursal_clave=sucursal_clave)
+
+
+@app.post("/api/v1/finanzas/comisiones/cierre", tags=["finanzas"])
+def commission_closing(
+    data: ComisionCierreRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_closing(conn, payload, actor)
 
 
 @app.get("/api/v1/entrenamiento/resumen", tags=["entrenamiento"])

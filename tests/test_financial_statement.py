@@ -8,7 +8,6 @@ from pypdf import PdfReader
 
 from app.config import get_settings
 from app.main import app
-from app.accounting import _estimated_sales_commissions
 from app.financial_reports import month_iso_periods
 
 
@@ -161,27 +160,6 @@ def test_weekly_income_statement_uses_synthetic_sales_fixture():
     indicators = data["indicadores_restaurante"]
     assert indicators["metodologia_costos"] == "compras_aplicadas_sin_ajuste_inventario"
     assert Decimal(str(indicators["ticket_promedio"])) > 0
-
-
-def test_estimated_sales_commissions_use_credit_and_app_rules():
-    demo_a = _estimated_sales_commissions({
-        "sucursal_clave": "DEMO-A", "visa": "1000", "amex": "500",
-        "uber": "100", "rappi": "200",
-    })
-    assert [(item["concepto"], item["monto"]) for item in demo_a] == [
-        ("TERMINALES VISA", Decimal("26.00")),
-        ("TERMINALES AMEX", Decimal("19.00")),
-        ("COMISION BANCO", Decimal("33.00")),
-        ("COMISIONES APLICACIONES", Decimal("31.00")),
-        ("COMISIONES APLICACIONES", Decimal("72.00")),
-    ]
-    demo_c = _estimated_sales_commissions({
-        "sucursal_clave": "DEMO-C", "visa": "1000", "amex": "500",
-        "uber": "100", "rappi": "200",
-    })
-    assert {item["concepto"] for item in demo_c} == {
-        "TERMINALES VISA", "TERMINALES AMEX", "COMISION BANCO",
-    }
 
 
 def test_fixed_provisions_are_itemized_and_feed_labor_indicator():

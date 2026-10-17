@@ -792,3 +792,6 @@ h1 { font-size: clamp(28px, 3vw, 38px); }
   .report-actions .button { width: 100%; min-height: 44px; }
   .legacy-report-controls .text-button { grid-column: auto; }
 }
+
+.inline-input { width: 9rem; padding: 0.35rem 0.5rem; text-align: right; }
+
