@@ -32,6 +32,7 @@ services:
       - ./db/migrations/021_document_deletion_and_cancellation.sql:/docker-entrypoint-initdb.d/31-document-deletion-and-cancellation.sql:ro
       - ./db/migrations/022_weekly_report_expenses.sql:/docker-entrypoint-initdb.d/32-weekly-report-expenses.sql:ro
       - ./db/migrations/023_estimated_fixed_expenses.sql:/docker-entrypoint-initdb.d/33-estimated-fixed-expenses.sql:ro
+      - ./db/migrations/024_expense_categories_v2.sql:/docker-entrypoint-initdb.d/34-expense-categories-v2.sql:ro
       - ./db/seeds/001_demo_catalogs.sql:/docker-entrypoint-initdb.d/20-demo-catalogs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturas_app} -d ${POSTGRES_DB:-facturas_demo}"]

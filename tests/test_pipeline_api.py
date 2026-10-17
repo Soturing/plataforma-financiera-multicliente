@@ -142,13 +142,14 @@ def test_accounting_catalogs_match_review_model():
     response = client.get("/api/v1/catalogos")
     assert response.status_code == 200, response.text
     catalogs = response.json()
-    assert [item["clave"] for item in catalogs["categorias"]] == ["FIJOS", "VARIABLES"]
-    assert {"RENTA", "MANTENIMIENTO", "INSUMOS", "BEBIDAS"}.issubset(
+    assert [item["clave"] for item in catalogs["categorias"]] == [
+        "FIJOS", "VARIABLES_OPERATIVOS", "IMPREVISTOS", "MANTENIMIENTO",
+        "GASOLINA", "GASTOS_BARRA", "GASTOS_RESTAURANTE",
+    ]
+    assert {"RENTA", "INSUMOS", "BEBIDAS"}.issubset(
         {item["clave"] for item in catalogs["subcategorias"]}
     )
-    assert {"COCINA", "BARRA", "ADMINISTRACION", "GENERAL"}.issubset(
-        {item["clave"] for item in catalogs["centros_costo"]}
-    )
+    assert "centros_costo" not in catalogs
 
 
 def test_pipeline_upload_process_approve():
@@ -219,7 +220,7 @@ def test_pipeline_upload_process_approve():
         assert dashboard.status_code == 200, dashboard.text
         assert dashboard.json()["aprobado"]["facturas"] >= 1
         assert any(
-                item["nombre"] == "Variables"
+                item["nombre"] == "Variables operativos"
             for item in dashboard.json()["aprobado"]["categorias"]
         )
 
@@ -381,7 +382,7 @@ def test_correction_allows_provider_branch_reference_and_optional_amounts():
                 (invoice_id,),
             ).fetchone()
             assert row == (
-                "Proveedor Editado Demo", None, None, 116, "Variables", None,
+                "Proveedor Editado Demo", None, None, 116, "Variables operativos", None,
                 "DEMO-A", "FAC-DEMO-A-8801",
             )
     finally:

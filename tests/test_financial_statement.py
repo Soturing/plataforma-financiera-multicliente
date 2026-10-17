@@ -14,7 +14,6 @@ from app.financial_reports import month_iso_periods
 
 ACTOR = "pytest-finance"
 SUBCATEGORY_KEY = "PYTEST_FINANCE"
-COST_CENTER_KEY = "PYTEST_AREA"
 
 
 def test_monthly_report_uses_iso_weeks_with_at_least_four_days_in_month():
@@ -138,17 +137,12 @@ def test_blank_executive_report_has_explanations_without_financial_values():
 def cleanup_catalog_test_data():
     with psycopg.connect(get_settings().database_url) as conn:
         ids = conn.execute(
-            """
-            SELECT id FROM catalog.subcategorias WHERE clave = %s
-            UNION ALL
-            SELECT id FROM catalog.centros_costo WHERE clave = %s
-            """,
-            (SUBCATEGORY_KEY, COST_CENTER_KEY),
+            "SELECT id FROM catalog.subcategorias WHERE clave = %s",
+            (SUBCATEGORY_KEY,),
         ).fetchall()
         for (item_id,) in ids:
             conn.execute("DELETE FROM audit.cambios_catalogo WHERE entidad_id = %s", (item_id,))
         conn.execute("DELETE FROM catalog.subcategorias WHERE clave = %s", (SUBCATEGORY_KEY,))
-        conn.execute("DELETE FROM catalog.centros_costo WHERE clave = %s", (COST_CENTER_KEY,))
         conn.execute("DELETE FROM finance.ventas WHERE registrada_por = %s", (ACTOR,))
 
 
@@ -238,14 +232,19 @@ def test_expense_detail_reconciles_with_statement_sections():
         assert all(row["semana_aplicacion"] == 32 for row in rows)
 
 
-def test_accounting_subcategories_and_cost_centers_are_configurable():
+def test_accounting_subcategories_are_configurable():
     cleanup_catalog_test_data()
     client = TestClient(app)
     try:
         catalogs = client.get("/api/v1/catalogos/contables")
         assert catalogs.status_code == 200, catalogs.text
+        keys = [item["clave"] for item in catalogs.json()["categorias"]]
+        assert keys == [
+            "FIJOS", "NOMINA", "COMISIONES", "VARIABLES_OPERATIVOS", "IMPREVISTOS",
+            "MANTENIMIENTO", "GASOLINA", "GASTOS_BARRA", "GASTOS_RESTAURANTE",
+        ]
         variables_id = next(
-            item["id"] for item in catalogs.json()["categorias"] if item["clave"] == "VARIABLES"
+            item["id"] for item in catalogs.json()["categorias"] if item["clave"] == "GASTOS_BARRA"
         )
         created_subcategory = client.post(
             "/api/v1/catalogos/subcategorias",
@@ -272,23 +271,12 @@ def test_accounting_subcategories_and_cost_centers_are_configurable():
         assert deactivated.status_code == 200, deactivated.text
         assert deactivated.json()["activa"] is False
 
-        created_center = client.post(
-            "/api/v1/catalogos/centros-costo",
-            json={
-                "clave": COST_CENTER_KEY,
-                "nombre": "Área de prueba",
-                "actualizado_por": ACTOR,
-            },
-        )
-        assert created_center.status_code == 200, created_center.text
-        assert created_center.json()["activo"] is True
-
         with psycopg.connect(get_settings().database_url) as conn:
             audit_count = conn.execute(
                 "SELECT count(*) FROM audit.cambios_catalogo WHERE realizado_por = %s",
                 (ACTOR,),
             ).fetchone()[0]
-            assert audit_count == 3
+            assert audit_count == 2
     finally:
         cleanup_catalog_test_data()
 

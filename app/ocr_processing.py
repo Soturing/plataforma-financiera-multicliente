@@ -96,7 +96,7 @@ def persist_ocr_result(
     if provider_id and is_expense_document(classification.type):
         accounting_rule = conn.execute(
             """
-            SELECT categoria_id, subcategoria_id, centro_costo_id
+            SELECT categoria_id, subcategoria_id
             FROM catalog.reglas_clasificacion
             WHERE proveedor_id = %s AND activa
             ORDER BY prioridad, version DESC
@@ -107,14 +107,9 @@ def persist_ocr_result(
     category_id = (
         accounting_rule["categoria_id"]
         if accounting_rule
-        else conn.execute("SELECT id FROM catalog.categorias WHERE clave = 'VARIABLES' AND activa").fetchone()["id"]
+        else conn.execute("SELECT id FROM catalog.categorias WHERE clave = 'VARIABLES_OPERATIVOS' AND activa").fetchone()["id"]
     )
     subcategory_id = accounting_rule["subcategoria_id"] if accounting_rule else None
-    cost_center_id = (
-        accounting_rule["centro_costo_id"]
-        if accounting_rule and accounting_rule["centro_costo_id"]
-        else conn.execute("SELECT id FROM catalog.centros_costo WHERE clave = 'GENERAL'").fetchone()["id"]
-    )
     conn.execute("UPDATE core.facturas SET estado = 'ia_procesando' WHERE id = %s", (invoice_id,))
     ia_version = conn.execute(
         "SELECT COALESCE(max(version), 0) + 1 AS version FROM ai.interpretaciones WHERE factura_id = %s",
@@ -126,10 +121,10 @@ def persist_ocr_result(
             factura_id, ocr_resultado_id, version, modelo_ia, reglas_version,
             proveedor_id, proveedor_propuesto, rfc_emisor, uuid_fiscal,
             folio, folio_origen, fecha_emision, subtotal, descuento, iva, otros_impuestos, total,
-            categoria_id, subcategoria_id, centro_costo_id, confianza, observaciones, salida_json
+            categoria_id, subcategoria_id, confianza, observaciones, salida_json
         ) VALUES (
             %s, %s, %s, 'reglas-deterministicas', '0.2', %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s::jsonb
         ) RETURNING id
         """,
@@ -139,7 +134,7 @@ def persist_ocr_result(
             fields["folio_origen"], fields["fecha_emision"],
             fields["subtotal"], fields["descuento"], fields["iva"],
             fields["otros_impuestos"], fields["total"], category_id,
-            subcategory_id, cost_center_id, document.confidence,
+            subcategory_id, document.confidence,
             (
                 "Extracción inicial; requiere revisión humana"
                 if is_expense_document(classification.type)

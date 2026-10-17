@@ -535,8 +535,8 @@ function renderFinanceStatement(data) {
     ["GASTOS BAR", expenses.bar, "expense", amountPercent(expenses.bar, beverageSales), "Venta de bebidas"],
     ["GASTOS RESTAURANTE", expenses.restaurante, "expense", amountPercent(expenses.restaurante, foodSales), "Venta de alimentos"],
     ["GASTOS MANTENIMIENTO", expenses.mantenimiento, "expense", amountPercent(expenses.mantenimiento, foodAndBeverageSales), "Venta alimentos + bebidas"],
-    ["GASTOS VARIABLES", expenses.variables, "expense", amountPercent(expenses.variables, foodAndBeverageSales), "Venta alimentos + bebidas"],
-    ["GASTOS INSUMOS Y DESECHABLES", expenses.insumos, "expense", amountPercent(expenses.insumos, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS VARIABLES OPERATIVOS Y COMISIONES", expenses.variables, "expense", amountPercent(expenses.variables, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS GASOLINA", expenses.gasolina, "expense", amountPercent(expenses.gasolina, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["GASTOS IMPREVISTOS", expenses.imprevistos, "expense", amountPercent(expenses.imprevistos, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["TOTAL GASTOS", expenses.total, "subtotal expense-total", amountPercent(expenses.total, foodAndBeverageSales), "Venta alimentos + bebidas"],
     [Number(summary.utilidad_operativa) >= 0 ? "GANANCIA" : "PÉRDIDA", summary.utilidad_operativa, Number(summary.utilidad_operativa) >= 0 ? "total" : "total negative-total", amountPercent(summary.utilidad_operativa, incomeTotal), "Total ingresos"],
@@ -582,11 +582,11 @@ function renderFinanceExpenseDetail(data) {
     bar: "Barra",
     restaurante: "Restaurante",
     mantenimiento: "Mantenimiento",
-    variables: "Variables generales",
-    insumos: "Insumos y desechables",
+    variables: "Variables operativos y comisiones",
+    gasolina: "Gasolina",
     imprevistos: "Imprevistos",
   };
-  const order = ["fijos", "nomina", "bar", "restaurante", "mantenimiento", "variables", "insumos", "imprevistos"];
+  const order = ["fijos", "nomina", "bar", "restaurante", "mantenimiento", "variables", "gasolina", "imprevistos"];
   const sections = order.filter(key => (groups[key] || []).length || Number(totals[key] || 0));
   if (!sections.length) {
     container.innerHTML = '<div class="empty">No hay gastos aplicados en este periodo.</div>';
@@ -773,9 +773,6 @@ async function renderProviderAdmin() {
   category.innerHTML += (catalogs?.categorias || []).map(item =>
     `<option value="${escapeHtml(item.clave)}">${escapeHtml(item.nombre)}</option>`
   ).join("");
-  document.querySelector("#provider-cost-center").innerHTML += (catalogs?.centros_costo || []).map(item =>
-    `<option value="${escapeHtml(item.clave)}">${escapeHtml(item.nombre)}</option>`
-  ).join("");
   const refreshSubcategories = selected => {
     const selectedCategory = (catalogs?.categorias || []).find(item => item.clave === category.value);
     const rows = (catalogs?.subcategorias || []).filter(item => item.categoria_id === selectedCategory?.id);
@@ -800,7 +797,6 @@ async function renderProviderAdmin() {
   };
   document.querySelector("#provider-import-form").onsubmit = previewProviderImport;
   document.querySelector("#subcategory-form").onsubmit = submitAccountingCatalog;
-  document.querySelector("#cost-center-form").onsubmit = submitAccountingCatalog;
   document.querySelectorAll("[data-clear-catalog]").forEach(button => {
     button.onclick = () => clearAccountingForm(button.dataset.clearCatalog);
   });
@@ -842,11 +838,7 @@ function renderAccountingCatalogs() {
   document.querySelector("#accounting-subcategories").innerHTML = accountingCatalogRows.subcategorias.map(item => `
     <button class="mini-catalog-row" type="button" data-edit-subcategory="${item.id}"><span class="catalog-key">${escapeHtml(item.clave)}</span><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml(item.categoria)} · ${item.usos} usos · ${item.activa ? "activa" : "inactiva"}</small></button>
   `).join("");
-  document.querySelector("#accounting-cost-centers").innerHTML = accountingCatalogRows.centros_costo.map(item => `
-    <button class="mini-catalog-row" type="button" data-edit-cost-center="${item.id}"><span class="catalog-key">${escapeHtml(item.clave)}</span><strong>${escapeHtml(item.nombre)}</strong><small>${item.usos} usos · ${item.activo ? "activo" : "inactivo"}</small></button>
-  `).join("");
   document.querySelectorAll("[data-edit-subcategory]").forEach(button => button.onclick = () => editSubcategory(button.dataset.editSubcategory));
-  document.querySelectorAll("[data-edit-cost-center]").forEach(button => button.onclick = () => editCostCenter(button.dataset.editCostCenter));
 }
 
 function editSubcategory(id) {
@@ -857,15 +849,6 @@ function editSubcategory(id) {
   form.elements.clave.value = item.clave;
   form.elements.nombre.value = item.nombre;
   form.elements.activa.checked = item.activa;
-}
-
-function editCostCenter(id) {
-  const item = accountingCatalogRows.centros_costo.find(row => row.id === id);
-  const form = document.querySelector("#cost-center-form");
-  form.elements.id.value = item.id;
-  form.elements.clave.value = item.clave;
-  form.elements.nombre.value = item.nombre;
-  form.elements.activo.checked = item.activo;
 }
 
 function clearAccountingForm(formId) {
@@ -879,15 +862,13 @@ function clearAccountingForm(formId) {
 async function submitAccountingCatalog(event) {
   event.preventDefault();
   const form = event.target;
-  const isSubcategory = form.id === "subcategory-form";
   const payload = Object.fromEntries(new FormData(form));
   payload.actualizado_por = operator();
-  payload[isSubcategory ? "activa" : "activo"] = (form.elements.activa || form.elements.activo).checked;
+  payload.activa = form.elements.activa.checked;
   if (!payload.id) payload.id = null;
-  const endpoint = isSubcategory ? "subcategorias" : "centros-costo";
   try {
-    await api(`/api/v1/catalogos/${endpoint}`, {method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)});
-    notify(isSubcategory ? "Subcategoría guardada" : "Centro de costo guardado");
+    await api("/api/v1/catalogos/subcategorias", {method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+    notify("Subcategoría guardada");
     clearAccountingForm(form.id);
     catalogs = await api("/api/v1/catalogos");
     accountingCatalogRows = await api("/api/v1/catalogos/contables");
@@ -914,7 +895,7 @@ function renderProviderList() {
   target.innerHTML = rows.length ? rows.map(item => `
     <article class="provider-row">
       <div><strong>${escapeHtml(item.nombre_normalizado)}</strong><small>${escapeHtml(item.razon_social)}${item.rfc ? ` · ${escapeHtml(item.rfc)}` : " · sin RFC"}</small></div>
-      <div><span>${escapeHtml(item.categoria || "Sin regla")}</span><small>${escapeHtml(item.subcategoria || "Sin subcategoría")} · ${escapeHtml(item.centro_costo || "Sin centro")}</small></div>
+      <div><span>${escapeHtml(item.categoria || "Sin regla")}</span><small>${escapeHtml(item.subcategoria || "Sin subcategoría")}</small></div>
       <div class="provider-aliases">${(item.aliases || []).length ? item.aliases.map(alias => `<span>${escapeHtml(alias.alias)}</span>`).join("") : "<small>Sin alias</small>"}</div>
       <button class="button ghost small" data-edit-provider="${item.id}">Editar</button>
     </article>`).join("") : `<div class="empty">No hay coincidencias.</div>`;
@@ -934,7 +915,6 @@ function editProvider(id) {
   form.elements.nombre_normalizado.value = row.nombre_normalizado || "";
   form.elements.nombre_comercial.value = row.nombre_comercial || "";
   form.elements.categoria.value = row.categoria || "";
-  form.elements.centro_costo.value = row.centro_costo || "";
   form.elements.aliases.value = (row.aliases || []).map(alias => alias.alias).join(" | ");
   form.elements.activo.checked = Boolean(row.activo);
   form.elements.categoria.dispatchEvent(new Event("change"));
@@ -958,7 +938,7 @@ async function submitProvider(event) {
   payload.activo = form.elements.activo.checked;
   payload.aliases = String(payload.aliases || "").split(/[|;]/).map(value => value.trim()).filter(Boolean);
   payload.actualizado_por = operator();
-  ["id", "rfc", "nombre_comercial", "categoria", "subcategoria", "centro_costo"].forEach(key => {
+  ["id", "rfc", "nombre_comercial", "categoria", "subcategoria"].forEach(key => {
     if (!payload[key]) payload[key] = null;
   });
   try {
@@ -1331,9 +1311,6 @@ async function renderReceipts() {
   document.querySelector("#receipt-category").innerHTML = (catalogs?.categorias || []).map(item =>
     `<option value="${item.id}">${escapeHtml(item.nombre)}</option>`
   ).join("");
-  document.querySelector("#receipt-cost-center").innerHTML = (catalogs?.centros_costo || []).map(item =>
-    `<option value="${item.id}">${escapeHtml(item.nombre)}</option>`
-  ).join("");
   document.querySelector("#informal-provider-options").innerHTML = (catalogs?.proveedores || []).map(item =>
     `<option value="${escapeHtml(item.nombre)}"></option>`
   ).join("");
@@ -1527,7 +1504,11 @@ async function renderAnalyticsDashboard() {
     document.querySelector("#analytics-date-to").value = localDateValue(now);
     document.querySelector("#analytics-period-mode").onchange = toggleAnalyticsPeriodFields;
     document.querySelector("#analytics-apply").onclick = refreshAnalyticsDashboard;
-    document.querySelector("#analytics-category").onchange = refreshAnalyticsDashboard;
+    const analyticsCategory = document.querySelector("#analytics-category");
+    analyticsCategory.innerHTML = '<option value="">Todas</option>' + (catalogs?.categorias || []).map(item =>
+      `<option value="${escapeHtml(item.nombre)}">${escapeHtml(item.nombre)}</option>`
+    ).join("");
+    analyticsCategory.onchange = refreshAnalyticsDashboard;
     toggleAnalyticsPeriodFields();
     await refreshAnalyticsDashboard();
   } catch (error) {
@@ -2169,8 +2150,7 @@ function renderFields(item) {
     <label>Otros impuestos (opcional)<input type="number" step="0.01" name="otros_impuestos" value="${item.otros_impuestos ?? ""}"></label>
     <label class="wide">Total<input type="number" step="0.01" name="total" value="${item.total ?? ""}"></label>
     <label>Categoría contable<select name="categoria_id">${options(catalogs.categorias, item.categoria_id)}</select></label>
-    <label>Subcategoría (opcional)<select name="subcategoria_id">${optionalOptions(catalogs.subcategorias.filter(x => x.categoria_id === item.categoria_id), item.subcategoria_id)}</select></label>
-    <label class="wide">Centro de costo<select name="centro_costo_id">${options(catalogs.centros_costo, item.centro_costo_id)}</select></label>`;
+    <label>Subcategoría (opcional)<select name="subcategoria_id">${optionalOptions(catalogs.subcategorias.filter(x => x.categoria_id === item.categoria_id), item.subcategoria_id)}</select></label>`;
   const form = document.querySelector("#review-form");
   form.elements.observaciones.value = item.observaciones || "";
   initialValues = Object.fromEntries(new FormData(form));

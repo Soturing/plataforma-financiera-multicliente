@@ -13,9 +13,8 @@ client = TestClient(app)
 
 def _catalog_values():
     catalogs = client.get("/api/v1/catalogos").json()
-    category = next(item for item in catalogs["categorias"] if item["clave"] == "VARIABLES")
-    cost_center = next(item for item in catalogs["centros_costo"] if item["clave"] == "GENERAL")
-    return category["id"], cost_center["id"]
+    category = next(item for item in catalogs["categorias"] if item["clave"] == "VARIABLES_OPERATIVOS")
+    return category["id"]
 
 
 def _cleanup():
@@ -29,7 +28,7 @@ def _cleanup():
 
 
 def _payload(total="8500.00", payment="transferencia"):
-    category_id, cost_center_id = _catalog_values()
+    category_id = _catalog_values()
     return {
         "sucursal_clave": "DEMO-A",
         "proveedor_nombre": "Proveedor Informal Pytest",
@@ -38,7 +37,6 @@ def _payload(total="8500.00", payment="transferencia"):
         "metodo_pago": payment,
         "total": total,
         "categoria_id": category_id,
-        "centro_costo_id": cost_center_id,
         "creado_por": "pytest-recibos",
         "rol_creador": "capturista",
     }
@@ -158,11 +156,9 @@ def test_fixed_internal_receipt_can_be_periodified():
     try:
         catalogs = client.get("/api/v1/catalogos").json()
         fixed = next(item for item in catalogs["categorias"] if item["clave"] == "FIJOS")
-        cost_center = next(item for item in catalogs["centros_costo"] if item["clave"] == "GENERAL")
         payload = _payload("40000.00")
         payload.update({
             "categoria_id": fixed["id"],
-            "centro_costo_id": cost_center["id"],
             "fecha_gasto": "2026-08-28",
             "periodificacion": json.dumps({
                 "tipo": "mensual",

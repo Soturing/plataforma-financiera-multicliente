@@ -31,10 +31,13 @@ def test_provider_catalog_template_round_trips_through_importer():
     from app.provider_catalog import parse_provider_file
     from app.provider_template import PROVIDER_HEADERS, build_provider_template
 
-    workbook = load_workbook(BytesIO(build_provider_template()))
+    workbook = load_workbook(BytesIO(build_provider_template(
+        [("FIJOS", "Gastos fijos"), ("VARIABLES_OPERATIVOS", "Variables operativos")],
+        [("FIJOS", "RENTA", "Renta")],
+    )))
     assert [cell.value for cell in workbook["Proveedores"][1]] == PROVIDER_HEADERS
     workbook["Proveedores"].append(
-        [None, "Proveedor Ficticio SA", "Proveedor Ficticio", None, "FIJOS", "RENTA", "GENERAL", "PF | P FICTICIO", "SI"]
+        [None, "Proveedor Ficticio SA", "Proveedor Ficticio", None, "FIJOS", "RENTA", "PF | P FICTICIO", "SI"]
     )
     buffer = BytesIO()
     workbook.save(buffer)
@@ -82,8 +85,7 @@ def create_provider(client: TestClient, aliases=None):
             "razon_social": TEST_CANONICAL,
             "nombre_normalizado": TEST_CANONICAL,
             "nombre_comercial": "Canonico",
-            "categoria": "VARIABLES",
-            "centro_costo": "COCINA",
+            "categoria": "VARIABLES_OPERATIVOS",
             "aliases": [TEST_ALIAS] if aliases is None else aliases,
             "actualizado_por": TEST_ACTOR,
         },
@@ -124,8 +126,8 @@ def test_provider_csv_import_has_preview_before_commit():
     cleanup_learning_data()
     client = TestClient(app)
     csv_data = (
-        "rfc,razon_social,nombre_normalizado,nombre_comercial,categoria,subcategoria,centro_costo,aliases,activo\n"
-        f",{TEST_CANONICAL},{TEST_CANONICAL},Canonico,VARIABLES,,COCINA,{TEST_ALIAS},SI\n"
+        "rfc,razon_social,nombre_normalizado,nombre_comercial,categoria,subcategoria,aliases,activo\n"
+        f",{TEST_CANONICAL},{TEST_CANONICAL},Canonico,VARIABLES_OPERATIVOS,,{TEST_ALIAS},SI\n"
     ).encode("utf-8")
     try:
         preview = client.post(

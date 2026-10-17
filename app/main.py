@@ -29,7 +29,6 @@ from app.accounting import (
     get_sales_breakdown,
     list_accounting_catalogs,
     register_sale,
-    save_cost_center,
     save_subcategory,
     save_sales_breakdown,
 )
@@ -72,7 +71,6 @@ from app.schemas import (
     ProcesamientoSimulado,
     ProveedorCatalogoRequest,
     SubcategoriaCatalogoRequest,
-    CentroCostoCatalogoRequest,
     EliminarDocumentosRequest,
     EliminarLoteRequest,
     CancelarLoteRequest,
@@ -483,7 +481,6 @@ async def create_receipt(
     metodo_pago: str = Form(...),
     total: Decimal = Form(...),
     categoria_id: UUID = Form(...),
-    centro_costo_id: UUID = Form(...),
     creado_por: str = Form(...),
     rol_creador: str = Form(...),
     proveedor_telefono: str | None = Form(default=None),
@@ -522,7 +519,6 @@ async def create_receipt(
             total=total,
             categoria_id=categoria_id,
             subcategoria_id=subcategoria_id,
-            centro_costo_id=centro_costo_id,
             creado_por=creado_por,
             rol_creador=rol_creador,
             firma_proveedor_nombre=firma_proveedor_nombre,
@@ -614,9 +610,22 @@ def providers_catalog(conn: Connection = Depends(get_connection)):
 
 
 @app.get("/api/v1/proveedores/plantilla", tags=["catalogos"])
-def provider_catalog_template():
+def provider_catalog_template(conn: Connection = Depends(get_connection)):
+    categories = conn.execute(
+        "SELECT clave, nombre FROM catalog.categorias WHERE activa AND admite_facturas ORDER BY orden"
+    ).fetchall()
+    subcategories = conn.execute(
+        """
+        SELECT c.clave AS categoria, sc.clave, sc.nombre
+        FROM catalog.subcategorias sc JOIN catalog.categorias c ON c.id = sc.categoria_id
+        WHERE sc.activa AND c.activa AND c.admite_facturas ORDER BY c.orden, sc.nombre
+        """
+    ).fetchall()
     return Response(
-        build_provider_template(),
+        build_provider_template(
+            [(row["clave"], row["nombre"]) for row in categories],
+            [(row["categoria"], row["clave"], row["nombre"]) for row in subcategories],
+        ),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="Plantilla-catalogo-proveedores.xlsx"'},
     )
@@ -650,16 +659,6 @@ def upsert_subcategory(
     payload = data.model_dump(mode="python")
     actor = payload.pop("actualizado_por")
     return save_subcategory(conn, payload, actor)
-
-
-@app.post("/api/v1/catalogos/centros-costo", tags=["catalogos"])
-def upsert_cost_center(
-    data: CentroCostoCatalogoRequest,
-    conn: Connection = Depends(get_connection),
-):
-    payload = data.model_dump(mode="python")
-    actor = payload.pop("actualizado_por")
-    return save_cost_center(conn, payload, actor)
 
 
 @app.get("/api/v1/entrenamiento/resumen", tags=["entrenamiento"])
@@ -719,9 +718,6 @@ def _validate_analytics_filters(
         except ValueError as exc:
             raise DomainError("La semana ISO no existe para el año indicado.", 422) from exc
     normalized_category = categoria.upper() if categoria else None
-    allowed_categories = {"FIJOS", "VARIABLES"}
-    if normalized_category and normalized_category not in allowed_categories:
-        raise DomainError("Categoría contable no válida.", 422)
     return {
         "anio_iso": anio_iso,
         "semana_iso": semana_iso,
@@ -761,7 +757,7 @@ def analytics_export(
     rows = get_analytics_export_rows(conn, **filters)
     columns = [
         "tipo_documento", "folio", "fecha", "anio_iso", "semana_iso", "restaurante", "sucursal", "proveedor",
-        "proveedor_rfc", "categoria", "subcategoria", "centro_costo", "moneda",
+        "proveedor_rfc", "categoria", "subcategoria", "moneda",
         "subtotal", "descuento", "iva", "otros_impuestos", "total", "estado_fiscal",
     ]
     output = io.StringIO()

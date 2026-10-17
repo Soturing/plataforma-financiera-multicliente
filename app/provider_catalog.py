@@ -15,7 +15,7 @@ from app.errors import DomainError
 
 EXPECTED_COLUMNS = (
     "rfc", "razon_social", "nombre_normalizado", "nombre_comercial",
-    "categoria", "subcategoria", "centro_costo", "aliases", "activo",
+    "categoria", "subcategoria", "aliases", "activo",
 )
 
 # Estos RFC se usan para operaciones con público general o extranjeros. No
@@ -187,7 +187,6 @@ def remember_accounting_rule(
     provider_id: UUID,
     category_id: UUID,
     subcategory_id: UUID | None,
-    cost_center_id: UUID | None,
     actor: str,
     invoice_id: UUID | None = None,
     review_id: UUID | None = None,
@@ -207,13 +206,13 @@ def remember_accounting_rule(
         """
         INSERT INTO catalog.reglas_clasificacion (
             nombre, prioridad, proveedor_id, categoria_id, subcategoria_id,
-            centro_costo_id, activa, version
-        ) VALUES (%s, 10, %s, %s, %s, %s, true, %s)
+            activa, version
+        ) VALUES (%s, 10, %s, %s, %s, true, %s)
         RETURNING id, version
         """,
         (
             f"APRENDIDA:{provider_id}", provider_id, category_id,
-            subcategory_id, cost_center_id, previous + 1,
+            subcategory_id, previous + 1,
         ),
     ).fetchone()
     conn.execute(
@@ -228,7 +227,6 @@ def remember_accounting_rule(
             json.dumps({
                 "categoria_id": str(category_id),
                 "subcategoria_id": str(subcategory_id) if subcategory_id else None,
-                "centro_costo_id": str(cost_center_id) if cost_center_id else None,
                 "version": row["version"],
             }),
             actor,
@@ -245,7 +243,6 @@ def _provider_rows(conn: Connection) -> list[dict[str, Any]]:
                p.activo, p.es_informal, p.telefono, p.giro,
                c.id AS categoria_id, c.clave AS categoria,
                sc.id AS subcategoria_id, sc.clave AS subcategoria,
-               cc.id AS centro_costo_id, cc.clave AS centro_costo,
                COALESCE(a.aliases, '[]'::json) AS aliases
         FROM catalog.proveedores p
         LEFT JOIN LATERAL (
@@ -255,7 +252,6 @@ def _provider_rows(conn: Connection) -> list[dict[str, Any]]:
         ) r ON true
         LEFT JOIN catalog.categorias c ON c.id = r.categoria_id
         LEFT JOIN catalog.subcategorias sc ON sc.id = r.subcategoria_id
-        LEFT JOIN catalog.centros_costo cc ON cc.id = r.centro_costo_id
         LEFT JOIN LATERAL (
             SELECT json_agg(json_build_object(
                 'id', pa.id, 'alias', pa.alias, 'origen', pa.origen,
@@ -343,7 +339,6 @@ def save_provider(conn: Connection, data: dict[str, Any], actor: str) -> dict[st
 
     category_id = _catalog_id(conn, "categorias", data.get("categoria"), "activa")
     subcategory_id = _catalog_id(conn, "subcategorias", data.get("subcategoria"), "activa")
-    cost_center_id = _catalog_id(conn, "centros_costo", data.get("centro_costo"), "activo")
     if category_id:
         if subcategory_id:
             valid = conn.execute(
@@ -354,7 +349,7 @@ def save_provider(conn: Connection, data: dict[str, Any], actor: str) -> dict[st
                 raise DomainError("La subcategoría no pertenece a la categoría elegida.", 422)
         remember_accounting_rule(
             conn, provider_id=provider_id, category_id=category_id,
-            subcategory_id=subcategory_id, cost_center_id=cost_center_id,
+            subcategory_id=subcategory_id,
             actor=actor,
         )
     elif provider_id and "categoria" in data:
@@ -522,7 +517,6 @@ def preview_provider_import(conn: Connection, rows: list[dict[str, str]]) -> lis
                 (subcategory_id, category_id),
             ).fetchone():
                 errors.append("Subcategoría incompatible")
-            _catalog_id(conn, "centros_costo", data["centro_costo"] or None, "activo")
         except DomainError as exc:
             errors.append(exc.message)
         existing = find_provider(

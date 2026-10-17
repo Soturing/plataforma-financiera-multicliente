@@ -8,31 +8,17 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 PROVIDER_HEADERS = [
     "rfc", "razon_social", "nombre_normalizado", "nombre_comercial", "categoria",
-    "subcategoria", "centro_costo", "aliases", "activo",
+    "subcategoria", "aliases", "activo",
 ]
 PROVIDER_ROWS = 200
 
-CATEGORIES = [("FIJOS", "Fijos"), ("VARIABLES", "Variables")]
-SUBCATEGORIES = [
-    ("FIJOS", "RENTA", "Renta"), ("FIJOS", "NOMINA_FIJA", "Nómina fija"),
-    ("FIJOS", "SERVICIOS_FIJOS", "Servicios fijos"), ("FIJOS", "LICENCIAS", "Licencias y suscripciones"),
-    ("VARIABLES", "INSUMOS", "Insumos"), ("VARIABLES", "BEBIDAS", "Bebidas"),
-    ("VARIABLES", "MANTENIMIENTO", "Mantenimiento"), ("VARIABLES", "COMISIONES", "Comisiones"),
-    ("VARIABLES", "SERVICIOS_VARIABLES", "Servicios variables"),
-    ("VARIABLES", "IMPREVISTOS", "Imprevistos"), ("VARIABLES", "OTROS_VARIABLES", "Otros variables"),
-]
-COST_CENTERS = [
-    ("COCINA", "Restaurante / Cocina"), ("BARRA", "Barra"),
-    ("ADMINISTRACION", "Administración"), ("GENERAL", "General"),
-]
 FIELDS = [
     ("rfc", "No", "RFC del emisor; dejar vacío para proveedor informal."),
     ("razon_social", "Sí", "Razón social o nombre legal exacto."),
     ("nombre_normalizado", "Sí", "Nombre único que verá el capturista y Analytics."),
     ("nombre_comercial", "No", "Nombre de fachada o marca."),
-    ("categoria", "No", "FIJOS o VARIABLES."),
-    ("subcategoria", "No", "Ej. RENTA, MANTENIMIENTO, INSUMOS o BEBIDAS."),
-    ("centro_costo", "No", "COCINA, BARRA, ADMINISTRACION o GENERAL."),
+    ("categoria", "No", "Clave de la hoja Categorias. Nómina y Comisiones no se capturan con facturas."),
+    ("subcategoria", "No", "Clave de la hoja Subcategorias; debe corresponder a la categoría."),
     ("aliases", "No", "Variantes OCR o nombres históricos separados por |."),
     ("activo", "Sí", "SI o NO."),
 ]
@@ -55,7 +41,9 @@ def _sheet(workbook: Workbook, title: str, headers: list[str], rows: list[tuple]
     return sheet
 
 
-def build_provider_template() -> bytes:
+def build_provider_template(
+    categories: list[tuple[str, str]], subcategories: list[tuple[str, str, str]]
+) -> bytes:
     workbook = Workbook()
     guide = workbook.active
     guide.title = "Instrucciones"
@@ -82,14 +70,13 @@ def build_provider_template() -> bytes:
 
     providers = _sheet(
         workbook, "Proveedores", PROVIDER_HEADERS, [],
-        [18, 30, 30, 30, 19, 19, 19, 46, 10],
+        [18, 30, 30, 30, 22, 22, 46, 10],
     )
     last = PROVIDER_ROWS + 1
     validations = [
-        (f"=Categorias!$A$2:$A${len(CATEGORIES) + 1}", f"E2:E{last}"),
-        (f"=Subcategorias!$B$2:$B${len(SUBCATEGORIES) + 1}", f"F2:F{last}"),
-        (f"=Centros_costo!$A$2:$A${len(COST_CENTERS) + 1}", f"G2:G{last}"),
-        ('"SI,NO"', f"I2:I{last}"),
+        (f"=Categorias!$A$2:$A${len(categories) + 1}", f"E2:E{last}"),
+        (f"=Subcategorias!$B$2:$B${len(subcategories) + 1}", f"F2:F{last}"),
+        ('"SI,NO"', f"H2:H{last}"),
     ]
     for formula, cells in validations:
         validation = DataValidation(type="list", formula1=formula, allow_blank=True)
@@ -97,9 +84,8 @@ def build_provider_template() -> bytes:
         validation.add(cells)
 
     _sheet(workbook, "Sucursales", ["clave", "razon_social", "rfc", "restaurante", "nombre_sucursal", "aliases"], [], [16, 38, 18, 23, 23, 48])
-    _sheet(workbook, "Categorias", ["clave", "nombre"], CATEGORIES, [24, 24])
-    _sheet(workbook, "Subcategorias", ["categoria", "clave", "nombre"], SUBCATEGORIES, [24, 24, 28])
-    _sheet(workbook, "Centros_costo", ["clave", "nombre"], COST_CENTERS, [24, 24])
+    _sheet(workbook, "Categorias", ["clave", "nombre"], categories, [24, 28])
+    _sheet(workbook, "Subcategorias", ["categoria", "clave", "nombre"], subcategories, [26, 24, 28])
 
     buffer = BytesIO()
     workbook.save(buffer)

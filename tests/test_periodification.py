@@ -74,8 +74,7 @@ def test_fixed_invoice_is_applied_retroactively_across_the_month():
                 "iva": "0",
                 "total": "100000.00",
                 "categoria_clave": "FIJOS",
-                "subcategoria_clave": "NOMINA_FIJA",
-                "centro_costo_clave": "GENERAL",
+                "subcategoria_clave": "SERVICIOS_FIJOS",
             },
         )
         assert processed.status_code == 200, processed.text

@@ -262,7 +262,6 @@
               <label>Sucursal principal *<select name="sucursal_clave" id="receipt-branch" required></select></label>
               <label>Categoría *<select name="categoria_id" id="receipt-category" required></select></label>
               <label>Subcategoría (opcional)<select name="subcategoria_id" id="receipt-subcategory"></select></label>
-              <label>Centro de costo *<select name="centro_costo_id" id="receipt-cost-center" required></select></label>
               <label>Rol de quien captura *<select name="rol_creador" required><option value="capturista">Capturista</option><option value="gerente">Gerente</option></select></label>
             </div>
           </fieldset></details>
@@ -332,7 +331,7 @@
           <label>Desde<input id="analytics-date-from" type="date"></label>
           <label>Hasta<input id="analytics-date-to" type="date"></label>
         </div>
-        <label>Categoría<select id="analytics-category"><option value="">Todas</option><option value="FIJOS">Fijos</option><option value="VARIABLES">Variables</option></select></label>
+        <label>Categoría<select id="analytics-category"><option value="">Todas</option></select></label>
         <button id="analytics-apply" class="button primary" type="button">Aplicar filtros</button>
       </section>
 
@@ -566,7 +565,6 @@
               <label>Nombre comercial<input name="nombre_comercial" maxlength="250"></label>
               <label>Categoría sugerida<select name="categoria" id="provider-category"><option value="">Sin regla</option></select></label>
               <label>Subcategoría sugerida<select name="subcategoria" id="provider-subcategory"><option value="">Sin subcategoría</option></select></label>
-              <label>Centro de costo<select name="centro_costo" id="provider-cost-center"><option value="">Sin centro</option></select></label>
               <label class="wide">Alias OCR separados por |<textarea name="aliases" rows="3" placeholder="PROVEEDOR FICTICIO GAMMA | PROVEEDOR C"></textarea></label>
             </div>
             <label class="check-row"><input type="checkbox" name="activo" checked><span>Proveedor activo</span></label>
@@ -595,12 +593,12 @@
       </section>
 
       <section class="panel accounting-catalog-panel">
-        <div class="panel-title"><div><h2>Estructura contable</h2><p>Fijos y variables son categorías maestras; subcategorías y centros de costo son configurables.</p></div></div>
+        <div class="panel-title"><div><h2>Estructura contable</h2><p>Las nueve categorías son fijas; las subcategorías de cada una se configuran aquí.</p></div></div>
         <div class="accounting-catalog-grid">
           <div class="accounting-column">
             <h3>Categorías maestras</h3>
             <div id="accounting-categories" class="mini-catalog"></div>
-            <small>Se mantienen en dos para evitar mezclar naturaleza del gasto con área operativa.</small>
+            <small>Nómina y Comisiones no se capturan con facturas; se registran por separado.</small>
           </div>
           <div class="accounting-column">
             <h3>Subcategorías</h3>
@@ -613,17 +611,6 @@
               <div><button type="button" class="button ghost small" data-clear-catalog="subcategory-form">Limpiar</button><button class="button primary small">Guardar</button></div>
             </form>
             <div id="accounting-subcategories" class="mini-catalog"></div>
-          </div>
-          <div class="accounting-column">
-            <h3>Centros de costo</h3>
-            <form id="cost-center-form" class="mini-catalog-form">
-              <input type="hidden" name="id">
-              <input name="clave" required maxlength="50" placeholder="CLAVE">
-              <input name="nombre" required maxlength="150" placeholder="Nombre visible">
-              <label class="check-row"><input type="checkbox" name="activo" checked><span>Activo</span></label>
-              <div><button type="button" class="button ghost small" data-clear-catalog="cost-center-form">Limpiar</button><button class="button primary small">Guardar</button></div>
-            </form>
-            <div id="accounting-cost-centers" class="mini-catalog"></div>
           </div>
         </div>
       </section>
@@ -660,7 +647,7 @@
           <div id="learning-panel" class="learning-panel">
             <strong>Aprender de esta revisión</strong>
             <label id="remember-alias-row"><input type="checkbox" id="remember-alias"><span id="remember-alias-label">Recordar el nombre leído como alias del proveedor</span></label>
-            <label><input type="checkbox" id="remember-classification"><span>Usar esta categoría, subcategoría y centro de costo para próximas facturas del proveedor</span></label>
+            <label><input type="checkbox" id="remember-classification"><span>Usar esta categoría y subcategoría para próximas facturas del proveedor</span></label>
             <small>Las reglas quedan auditadas y se pueden reemplazar desde el catálogo.</small>
           </div>
           <div id="invoice-periodification-panel" class="periodification-panel hidden">

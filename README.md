@@ -57,7 +57,7 @@ La prueba recorre todas las capas, verifica la fila de analytics y ejecuta `ROLL
 
 ## Periodificación de gastos fijos
 
-Al aprobar una factura o generar un comprobante clasificado como `FIJOS`, el capturista puede elegir una aplicación semanal, mensual, bimestral o personalizada. El documento conserva la fecha y el total pagado, mientras el Estado de Resultados distribuye el importe en partes iguales entre las semanas ISO que tengan al menos cuatro días dentro del periodo; cualquier diferencia de centavos se asigna a la última semana.
+Al aprobar una factura o generar un comprobante clasificado como `FIJOS` (gastos fijos), el capturista puede elegir una aplicación semanal, mensual, bimestral o personalizada. El documento conserva la fecha y el total pagado, mientras el Estado de Resultados distribuye el importe en partes iguales entre las semanas ISO que tengan al menos cuatro días dentro del periodo; cualquier diferencia de centavos se asigna a la última semana.
 
 La periodicidad puede recordarse por proveedor y subcategoría para sugerirla automáticamente en capturas posteriores. Cada gasto pertenece siempre a una sola sucursal.
 
@@ -143,7 +143,7 @@ Debajo del Estado de Resultados se muestra el detalle auditable de los documento
 
 El botón **Descargar reporte PDF** genera en el momento un reporte semanal de compras de Restaurante y Barra usando el año, semana y sucursal seleccionados. La plantilla incluye resumen ejecutivo, comparación con la semana anterior y el promedio de cuatro semanas, gráficas, desglose por sucursal, proveedores y detalle documental. La generación es determinista y no consume servicios de IA.
 
-Las únicas categorías superiores activas son `FIJOS` y `VARIABLES`. Las áreas operativas (`BARRA`, `COCINA`, `ADMINISTRACION`, `GENERAL`) se administran como centros de costo desde `#/catalogos`.
+Las nueve categorías de gasto (D-017) y sus reglas están en [docs/categorias-gastos.md](docs/categorias-gastos.md). Las subcategorías se administran desde `#/catalogos`; ya no existen centros de costo.
 
 El mismo módulo financiero incluye captura diaria editable de ventas por efectivo, dólares y tipo de cambio, Rappi, Uber, Visa y Amex. Crédito, conversión, venta neta y ticket promedio se calculan automáticamente. Un segundo cuadro concilia la venta contra `OTRO`, `APLICACIONES`, `ALIMENTOS` y `BEBIDAS`, además de faltantes, sobrantes y visitas.
 

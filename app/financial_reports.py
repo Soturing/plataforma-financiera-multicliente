@@ -178,7 +178,7 @@ def _empty_totals() -> dict[str, Decimal]:
         "nomina": Decimal("0"), "fijos_sin_nomina": Decimal("0"),
         "bar": Decimal("0"), "restaurante": Decimal("0"),
         "mantenimiento": Decimal("0"), "variables": Decimal("0"),
-        "insumos": Decimal("0"), "imprevistos": Decimal("0"),
+        "gasolina": Decimal("0"), "imprevistos": Decimal("0"),
         "visitas": Decimal("0"),
     }
 
@@ -206,7 +206,7 @@ def _aggregate_statements(
         totals["visitas"] += _decimal(indicators["visitas"])
         totals["nomina"] += _decimal(expenses["nomina"])
         totals["fijos_sin_nomina"] += _decimal(expenses["fijos"])
-        for key in ("bar", "restaurante", "mantenimiento", "variables", "insumos", "imprevistos"):
+        for key in ("bar", "restaurante", "mantenimiento", "variables", "gasolina", "imprevistos"):
             totals[key] += _decimal(expenses[key])
 
         weekly.append({
@@ -626,8 +626,9 @@ def build_configurable_financial_report(
                 ["Restaurante", _money(totals["restaurante"]), _percent(totals["restaurante"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
                 ["Barra", _money(totals["bar"]), _percent(totals["bar"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
                 ["Mantenimiento", _money(totals["mantenimiento"]), _percent(totals["mantenimiento"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
-                ["Variables generales", _money(totals["variables"]), _percent(totals["variables"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
-                ["Insumos e imprevistos", _money(totals["insumos"] + totals["imprevistos"]), _percent((totals["insumos"] + totals["imprevistos"]) / totals["gastos_totales"] if totals["gastos_totales"] else None)],
+                ["Variables operativos y comisiones", _money(totals["variables"]), _percent(totals["variables"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
+                ["Gasolina", _money(totals["gasolina"]), _percent(totals["gasolina"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
+                ["Imprevistos", _money(totals["imprevistos"]), _percent(totals["imprevistos"] / totals["gastos_totales"] if totals["gastos_totales"] else None)],
             ], [105 * mm, 58 * mm, 55 * mm], brand, styles), Spacer(1, 6 * mm),
         ])])
     if "punto_equilibrio" in selected:
