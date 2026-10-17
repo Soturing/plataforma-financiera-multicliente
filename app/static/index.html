@@ -592,6 +592,24 @@
         <div id="quality-list" class="quality-list"></div>
       </section>
 
+      <section class="panel fixed-expense-panel">
+        <div class="panel-title"><div><h2>Gastos fijos</h2><p>Solo los proveedores de esta lista pueden clasificarse como Gastos fijos. Agréguelos aquí antes de capturar sus facturas.</p></div></div>
+        <form id="fixed-expense-form" class="mini-catalog-form">
+          <select name="proveedor_id" id="fixed-expense-provider" required></select>
+          <select name="subcategoria_id" id="fixed-expense-subcategory"><option value="">Sin subcategoría</option></select>
+          <select name="periodicidad">
+            <option value="">Sin periodicidad sugerida</option>
+            <option value="una_semana">Una semana</option>
+            <option value="mensual">Mensual</option>
+            <option value="bimestral">Bimestral</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+          <label class="check-row"><input type="checkbox" name="activa" checked><span>Activo</span></label>
+          <div><button type="button" class="button ghost small" id="fixed-expense-clear">Limpiar</button><button class="button primary small">Guardar</button></div>
+        </form>
+        <div id="fixed-expense-list" class="mini-catalog"></div>
+      </section>
+
       <section class="panel accounting-catalog-panel">
         <div class="panel-title"><div><h2>Estructura contable</h2><p>Las nueve categorías son fijas; las subcategorías de cada una se configuran aquí.</p></div></div>
         <div class="accounting-catalog-grid">

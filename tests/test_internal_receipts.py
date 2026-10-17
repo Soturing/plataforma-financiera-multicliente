@@ -23,6 +23,10 @@ def _cleanup():
             "DELETE FROM core.comprobantes_internos WHERE creado_por LIKE 'pytest-recibos%'"
         )
         conn.execute(
+            "DELETE FROM catalog.gastos_fijos WHERE proveedor_id IN "
+            "(SELECT id FROM catalog.proveedores WHERE nombre_normalizado = 'Proveedor Informal Pytest')"
+        )
+        conn.execute(
             "DELETE FROM catalog.sucursales WHERE clave = 'PYTEST-02'"
         )
 
@@ -157,6 +161,11 @@ def test_fixed_internal_receipt_can_be_periodified():
         catalogs = client.get("/api/v1/catalogos").json()
         fixed = next(item for item in catalogs["categorias"] if item["clave"] == "FIJOS")
         payload = _payload("40000.00")
+        assert client.post("/api/v1/comprobantes-internos", data=_payload("100.00")).status_code == 201
+        provider_id = next(
+            item["id"] for item in client.get("/api/v1/proveedores").json()
+            if item["nombre_normalizado"] == "Proveedor Informal Pytest"
+        )
         payload.update({
             "categoria_id": fixed["id"],
             "fecha_gasto": "2026-08-28",
@@ -166,6 +175,13 @@ def test_fixed_internal_receipt_can_be_periodified():
                 "periodo_hasta": "2026-08-31",
             }),
         })
+        blocked = client.post("/api/v1/comprobantes-internos", data=payload)
+        assert blocked.status_code == 422, blocked.text
+        listed = client.post(
+            "/api/v1/gastos-fijos",
+            json={"proveedor_id": provider_id, "actualizado_por": "pytest-recibos"},
+        )
+        assert listed.status_code == 200, listed.text
         created = client.post("/api/v1/comprobantes-internos", data=payload)
         assert created.status_code == 201, created.text
         receipt_id = created.json()["id"]

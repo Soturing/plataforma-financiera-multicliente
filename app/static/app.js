@@ -10,6 +10,7 @@ let analyticsData = null;
 let providerAdminRows = [];
 let providerImportFile = null;
 let accountingCatalogRows = null;
+let fixedExpenseRows = [];
 let financeData = null;
 let salesBreakdownData = null;
 let financeLoadSequence = 0;
@@ -797,6 +798,12 @@ async function renderProviderAdmin() {
   };
   document.querySelector("#provider-import-form").onsubmit = previewProviderImport;
   document.querySelector("#subcategory-form").onsubmit = submitAccountingCatalog;
+  document.querySelector("#fixed-expense-form").onsubmit = submitFixedExpense;
+  document.querySelector("#fixed-expense-clear").onclick = () => {
+    const form = document.querySelector("#fixed-expense-form");
+    form.reset();
+    form.elements.activa.checked = true;
+  };
   document.querySelectorAll("[data-clear-catalog]").forEach(button => {
     button.onclick = () => clearAccountingForm(button.dataset.clearCatalog);
   });
@@ -805,14 +812,16 @@ async function renderProviderAdmin() {
 
 async function loadProviderAdmin() {
   try {
-    const [providers, quality, training, accounting] = await Promise.all([
+    const [providers, quality, training, accounting, fixedExpenses] = await Promise.all([
       api("/api/v1/proveedores"),
       api("/api/v1/calidad-datos"),
       api("/api/v1/entrenamiento/resumen"),
       api("/api/v1/catalogos/contables"),
+      api("/api/v1/gastos-fijos"),
     ]);
     providerAdminRows = providers;
     accountingCatalogRows = accounting;
+    fixedExpenseRows = fixedExpenses;
     document.querySelector("#catalog-total").textContent = providers.filter(item => item.activo).length;
     document.querySelector("#catalog-aliases").textContent = providers.reduce((sum, item) => sum + (item.aliases?.length || 0), 0);
     document.querySelector("#catalog-issues").textContent = quality.problemas.length + Number(quality.sucursales_pendientes || 0);
@@ -820,6 +829,56 @@ async function loadProviderAdmin() {
     renderProviderList();
     renderQuality(quality);
     renderAccountingCatalogs();
+    renderFixedExpenses();
+  } catch (error) {
+    notify(error.message, true);
+  }
+}
+
+const PERIOD_LABELS = {una_semana: "Una semana", mensual: "Mensual", bimestral: "Bimestral", personalizado: "Personalizado"};
+
+function renderFixedExpenses() {
+  const form = document.querySelector("#fixed-expense-form");
+  if (!form) return;
+  const providerSelect = document.querySelector("#fixed-expense-provider");
+  const selected = providerSelect.value;
+  providerSelect.innerHTML = '<option value="">Seleccione un proveedor</option>' + providerAdminRows.filter(item => item.activo).map(item =>
+    `<option value="${item.id}" ${item.id === selected ? "selected" : ""}>${escapeHtml(item.nombre_normalizado)}</option>`
+  ).join("");
+  const fixedCategory = (accountingCatalogRows?.categorias || []).find(item => item.clave === "FIJOS");
+  document.querySelector("#fixed-expense-subcategory").innerHTML = '<option value="">Sin subcategoría</option>' +
+    (accountingCatalogRows?.subcategorias || []).filter(item => item.categoria_id === fixedCategory?.id && item.activa).map(item =>
+      `<option value="${item.id}">${escapeHtml(item.nombre)}</option>`
+    ).join("");
+  document.querySelector("#fixed-expense-list").innerHTML = fixedExpenseRows.map(item => `
+    <button class="mini-catalog-row" type="button" data-edit-fixed="${item.id}"><strong>${escapeHtml(item.proveedor)}</strong><small>${escapeHtml(item.subcategoria || "Sin subcategoría")} · ${escapeHtml(PERIOD_LABELS[item.periodicidad] || "Sin periodicidad")} · ${item.activa ? "activo" : "inactivo"}</small></button>
+  `).join("") || '<div class="empty">Aún no hay proveedores de gastos fijos.</div>';
+  document.querySelectorAll("[data-edit-fixed]").forEach(button => button.onclick = () => {
+    const item = fixedExpenseRows.find(row => row.id === button.dataset.editFixed);
+    form.elements.proveedor_id.value = item.proveedor_id;
+    form.elements.subcategoria_id.value = item.subcategoria_id || "";
+    form.elements.periodicidad.value = item.periodicidad || "";
+    form.elements.activa.checked = item.activa;
+  });
+}
+
+async function submitFixedExpense(event) {
+  event.preventDefault();
+  const form = event.target;
+  const payload = {
+    proveedor_id: form.elements.proveedor_id.value,
+    subcategoria_id: form.elements.subcategoria_id.value || null,
+    periodicidad: form.elements.periodicidad.value || null,
+    activa: form.elements.activa.checked,
+    actualizado_por: operator(),
+  };
+  try {
+    await api("/api/v1/gastos-fijos", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+    notify("Gasto fijo guardado");
+    form.reset();
+    form.elements.activa.checked = true;
+    catalogs = await api("/api/v1/catalogos");
+    await loadProviderAdmin();
   } catch (error) {
     notify(error.message, true);
   }

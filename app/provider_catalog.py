@@ -235,6 +235,12 @@ def remember_accounting_rule(
     return row
 
 
+def _category_key(conn: Connection, category_id: UUID) -> str:
+    return conn.execute(
+        "SELECT clave FROM catalog.categorias WHERE id = %s", (category_id,)
+    ).fetchone()["clave"]
+
+
 def _provider_rows(conn: Connection) -> list[dict[str, Any]]:
     return conn.execute(
         """
@@ -340,6 +346,9 @@ def save_provider(conn: Connection, data: dict[str, Any], actor: str) -> dict[st
     category_id = _catalog_id(conn, "categorias", data.get("categoria"), "activa")
     subcategory_id = _catalog_id(conn, "subcategorias", data.get("subcategoria"), "activa")
     if category_id:
+        if _category_key(conn, category_id) == "FIJOS":
+            from app.fixed_expenses import require_fixed_provider
+            require_fixed_provider(conn, provider_id)
         if subcategory_id:
             valid = conn.execute(
                 "SELECT 1 FROM catalog.subcategorias WHERE id = %s AND categoria_id = %s",
@@ -512,6 +521,12 @@ def preview_provider_import(conn: Connection, rows: list[dict[str, str]]) -> lis
         try:
             category_id = _catalog_id(conn, "categorias", data["categoria"] or None, "activa")
             subcategory_id = _catalog_id(conn, "subcategorias", data["subcategoria"] or None, "activa")
+            if category_id and _category_key(conn, category_id) == "FIJOS":
+                from app.fixed_expenses import require_fixed_provider
+                existing_fixed = find_provider(
+                    conn, rfc=data["rfc"] or None, proposed_name=data["nombre_normalizado"]
+                ) if data["nombre_normalizado"] else None
+                require_fixed_provider(conn, existing_fixed["id"] if existing_fixed else None)
             if category_id and subcategory_id and not conn.execute(
                 "SELECT 1 FROM catalog.subcategorias WHERE id=%s AND categoria_id=%s",
                 (subcategory_id, category_id),

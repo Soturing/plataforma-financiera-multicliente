@@ -7,6 +7,7 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.errors import DomainError
+from app.fixed_expenses import require_fixed_provider
 from app.schemas import ProcesamientoSimulado
 from app.pdf_splitter import SplitPage
 from app.classification import classify_document, is_expense_document, save_classification
@@ -1317,6 +1318,8 @@ def decide_invoice(
             "Asigne una sucursal real antes de aprobar y publicar el gasto.", 422
         )
     category = _invoice_category(conn, values["categoria_id"])
+    if category["clave"] == "FIJOS":
+        require_fixed_provider(conn, values["proveedor_id"])
 
     if remember_alias:
         output = context.get("salida_json") or {}
@@ -1582,6 +1585,8 @@ def edit_approved_invoice(
     if not branch or branch["clave"] == "POR-ASIGNAR":
         raise DomainError("Seleccione una sucursal activa antes de guardar.", 422)
     category = _invoice_category(conn, values["categoria_id"])
+    if category["clave"] == "FIJOS":
+        require_fixed_provider(conn, values["proveedor_id"])
     if values.get("subcategoria_id") and not conn.execute(
         "SELECT 1 FROM catalog.subcategorias WHERE id = %s AND categoria_id = %s AND activa",
         (values["subcategoria_id"], values["categoria_id"]),

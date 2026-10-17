@@ -8,6 +8,7 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.errors import DomainError
+from app.fixed_expenses import require_fixed_provider
 from app.periodification import save_periodification
 
 
@@ -157,6 +158,9 @@ def create_internal_receipt(
             """,
             (proveedor_nombre, proveedor_nombre, proveedor_telefono, proveedor_giro),
         ).fetchone()["id"]
+
+    if category["clave"] == "FIJOS":
+        require_fixed_provider(conn, provider_id)
 
     parsed_distributions = distribuciones or [{"sucursal_clave": sucursal_clave, "monto": total}]
     if not parsed_distributions:

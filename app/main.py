@@ -71,6 +71,7 @@ from app.schemas import (
     ProcesamientoSimulado,
     ProveedorCatalogoRequest,
     SubcategoriaCatalogoRequest,
+    GastoFijoRequest,
     EliminarDocumentosRequest,
     EliminarLoteRequest,
     CancelarLoteRequest,
@@ -103,6 +104,7 @@ import shutil
 from app.jobs import is_batch_active, start_batch_job, start_invoice_job
 from app.classification import reclassify_batch
 from app.provider_template import build_provider_template
+from app.fixed_expenses import list_fixed_expenses, save_fixed_expense
 from app.provider_catalog import (
     apply_provider_import,
     list_providers,
@@ -659,6 +661,21 @@ def upsert_subcategory(
     payload = data.model_dump(mode="python")
     actor = payload.pop("actualizado_por")
     return save_subcategory(conn, payload, actor)
+
+
+@app.get("/api/v1/gastos-fijos", tags=["catalogos"])
+def fixed_expenses(conn: Connection = Depends(get_connection)):
+    return list_fixed_expenses(conn)
+
+
+@app.post("/api/v1/gastos-fijos", tags=["catalogos"])
+def upsert_fixed_expense(
+    data: GastoFijoRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_fixed_expense(conn, payload, actor)
 
 
 @app.get("/api/v1/entrenamiento/resumen", tags=["entrenamiento"])

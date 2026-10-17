@@ -27,6 +27,10 @@ def cleanup():
             "(SELECT id FROM core.facturas WHERE creada_por = 'pytest-periodificacion')"
         )
         conn.execute("DELETE FROM core.facturas WHERE creada_por = 'pytest-periodificacion'")
+        conn.execute(
+            "DELETE FROM catalog.gastos_fijos WHERE proveedor_id IN "
+            "(SELECT id FROM catalog.proveedores WHERE nombre_normalizado = 'IMSS Pytest')"
+        )
     for path in paths:
         path.unlink(missing_ok=True)
 
@@ -78,6 +82,21 @@ def test_fixed_invoice_is_applied_retroactively_across_the_month():
             },
         )
         assert processed.status_code == 200, processed.text
+        blocked = client.post(
+            f"/api/v1/facturas/{invoice_id}/aprobar",
+            json={"revisada_por": "pytest-periodificacion"},
+        )
+        assert blocked.status_code == 422, blocked.text
+        assert "lista de gastos fijos" in blocked.json()["detail"]
+        provider_id = next(
+            item["id"] for item in client.get("/api/v1/proveedores").json()
+            if item["nombre_normalizado"] == "IMSS Pytest"
+        )
+        listed = client.post(
+            "/api/v1/gastos-fijos",
+            json={"proveedor_id": provider_id, "periodicidad": "mensual", "actualizado_por": "pytest-periodificacion"},
+        )
+        assert listed.status_code == 200, listed.text
         approved = client.post(
             f"/api/v1/facturas/{invoice_id}/aprobar",
             json={

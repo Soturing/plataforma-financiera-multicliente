@@ -198,6 +198,14 @@ class SubcategoriaCatalogoRequest(BaseModel):
     actualizado_por: str = Field(min_length=1, max_length=200)
 
 
+class GastoFijoRequest(BaseModel):
+    proveedor_id: UUID
+    subcategoria_id: UUID | None = None
+    periodicidad: Literal["una_semana", "mensual", "bimestral", "personalizado"] | None = None
+    activa: bool = True
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
 class VentaManualRequest(BaseModel):
     sucursal_id: UUID
     fecha: date
