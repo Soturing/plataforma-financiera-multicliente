@@ -42,6 +42,56 @@ def reading_context(conn: Connection) -> tuple[tuple[str, ...], tuple[str, ...],
     return tuple(dict.fromkeys(own_rfcs)), tuple(own_names), known
 
 
+def find_possible_duplicates(
+    conn: Connection,
+    invoice_id: UUID,
+    *,
+    provider_id: UUID | None,
+    total: Decimal | None,
+    issue_date: Any,
+    folio: str | None,
+    folio_origin: str | None,
+) -> list[dict[str, Any]]:
+    """Documentos del mismo proveedor con el mismo total (y fecha cercana) o el mismo folio.
+
+    Un ticket y su factura son un solo gasto; un folio repetido suele ser la página de continuación
+    de una factura. Solo se advierte: la decisión es de la persona que revisa.
+    """
+    if provider_id is None:
+        return []
+    rows = conn.execute(
+        """
+        SELECT f.id, f.archivo_nombre, i.total, i.fecha_emision, i.folio, i.folio_origen
+        FROM core.facturas f
+        JOIN LATERAL (
+            SELECT * FROM ai.interpretaciones ix WHERE ix.factura_id = f.id ORDER BY ix.version DESC LIMIT 1
+        ) i ON true
+        WHERE f.id <> %s AND i.proveedor_id = %s AND f.estado::text NOT IN ('cancelada', 'rechazada')
+        """,
+        (invoice_id, provider_id),
+    ).fetchall()
+    found = []
+    for row in rows:
+        same_total = (
+            total is not None and row["total"] is not None and abs(Decimal(row["total"]) - total) <= Decimal("0.01")
+        )
+        close_dates = (
+            issue_date is None or row["fecha_emision"] is None
+            or abs((row["fecha_emision"] - issue_date).days) <= 3
+        )
+        same_folio = bool(
+            folio and row["folio"] and folio_origin == "detectado" and row["folio_origen"] == "detectado"
+            and folio.strip().upper() == str(row["folio"]).strip().upper()
+        )
+        if (same_total and close_dates) or same_folio:
+            found.append({
+                "factura_id": row["id"], "archivo": row["archivo_nombre"],
+                "motivo": "folio" if same_folio and not same_total else "total",
+                "folio": row["folio"],
+            })
+    return found
+
+
 def persist_ocr_result(
     conn: Connection,
     invoice_id: UUID,
@@ -193,6 +243,19 @@ def persist_ocr_result(
                     "SUCURSAL_POR_CONSUMO", "advertencia", False, "sucursal_id",
                     "La composición de compra sugiere una sucursal, pero requiere confirmación humana",
                 ))
+        for duplicate in find_possible_duplicates(
+            conn, invoice_id, provider_id=provider_id, total=fields["total"],
+            issue_date=fields["fecha_emision"], folio=fields["folio"], folio_origin=fields["folio_origen"],
+        ):
+            reason = (
+                "mismo folio: puede ser una página de continuación o un duplicado"
+                if duplicate["motivo"] == "folio"
+                else "mismo proveedor y total: un ticket y su factura son un solo gasto"
+            )
+            checks.append((
+                "POSIBLE_DUPLICADO", "advertencia", False, "total",
+                f"Parecido a {duplicate['archivo']} ({reason}); verifique antes de aprobar",
+            ))
         checks.append(("PROVEEDOR", "error", provider_id is not None, "proveedor", "Proveedor identificado" if provider_id else "Proveedor requiere selección"))
         checks.append(("FECHA", "error", fields["fecha_emision"] is not None, "fecha_emision", "Fecha identificada" if fields["fecha_emision"] else "Fecha no identificada"))
         total_present = fields["total"] is not None and fields["total"] > 0
