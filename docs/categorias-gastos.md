@@ -21,6 +21,6 @@ Definición vigente de D-017. Las categorías son fijas; las subcategorías se e
   - La semana ISO pertenece al mes de su jueves. La proyección semanal es base × porcentaje; el monto fijo mensual se reparte entre las semanas del mes.
   - Al cerrar el mes se captura el importe real por concepto (`finance.comision_cierres`). Ese importe sustituye a la proyección y se reparte en partes iguales entre las semanas del mes, con el residuo de centavos en la última. Borrar el cierre devuelve la proyección.
   - Los porcentajes se editan sobre proyecciones aún no cerradas; un mes con cierre real no cambia al editar porcentajes.
-- **Nómina:** captura manual por semana y sucursal; mientras no exista, el Estado de Resultados usa la provisión estimada.
+- **Nómina:** captura manual por semana ISO y sucursal en `#/finanzas > Nómina de la semana` (`finance.nomina_semanal`). Un importe capturado sustituye a la provisión estimada de esa semana; borrarlo devuelve el estimado. Cuenta como gasto fijo.
 - **Estado de Resultados:** ventas − costos variables = margen de contribución − gastos fijos (Fijos + Nómina) = utilidad operativa.
 - Una cuenta bancaria compartida por varias sucursales no está contemplada; se desarrollará cuando se pida.

@@ -248,6 +248,45 @@ async function loadCommissionPanel(requestId) {
   });
 }
 
+async function loadPayrollPanel(requestId) {
+  const body = document.querySelector("#payroll-rows");
+  if (!body || !financeData) return;
+  const {anio_iso: year, semana_iso: week} = financeData.periodo;
+  const branch = document.querySelector("#finance-branch").value;
+  const query = new URLSearchParams({anio_iso: year, semana_iso: week});
+  if (branch) query.set("sucursal_clave", branch);
+  const rows = await api(`/api/v1/finanzas/nomina?${query}`);
+  if (requestId !== financeLoadSequence) return;
+  document.querySelector("#payroll-period-label").textContent = `Semana ISO ${week} de ${year}: importe capturado a mano por sucursal.`;
+  body.innerHTML = rows.map(row => `
+    <tr>
+      <td>${escapeHtml(row.sucursal)}</td>
+      <td class="numeric">${row.estimado == null ? "—" : money.format(row.estimado)}</td>
+      <td class="numeric"><input type="number" step="0.01" min="0" class="inline-input" data-payroll-input="${escapeHtml(row.sucursal_clave)}" value="${row.capturado ?? ""}" placeholder="Sin captura"></td>
+      <td><input type="text" maxlength="300" data-payroll-note="${escapeHtml(row.sucursal_clave)}" value="${escapeHtml(row.nota || "")}" placeholder="Nota opcional"></td>
+      <td><button class="button ghost small" data-payroll-save="${escapeHtml(row.sucursal_clave)}">Guardar</button></td>
+    </tr>`).join("");
+  body.querySelectorAll("[data-payroll-save]").forEach(button => button.onclick = async () => {
+    const key = button.dataset.payrollSave;
+    const amount = body.querySelector(`[data-payroll-input="${key}"]`).value;
+    try {
+      await api("/api/v1/finanzas/nomina", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          sucursal_clave: key, anio_iso: year, semana_iso: week,
+          monto: amount === "" ? null : amount,
+          nota: body.querySelector(`[data-payroll-note="${key}"]`).value || null,
+          actualizado_por: operator(),
+        }),
+      });
+      notify(amount === "" ? "Captura eliminada; se usa el estimado" : "Nómina guardada");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+}
+
 const COMMISSION_LABELS = {
   VISA: "Terminal Visa", AMEX: "Terminal Amex", BANCO: "Banco", APPS: "Apps", SERVICIOS: "Servicios",
 };
@@ -541,6 +580,8 @@ async function loadFinanceStatement(useLatest = false) {
     await loadSalesBreakdown(requestId);
     if (requestId !== financeLoadSequence) return;
     await loadCommissionPanel(requestId);
+    if (requestId !== financeLoadSequence) return;
+    await loadPayrollPanel(requestId);
     if (requestId !== financeLoadSequence) return;
     const persisted = new URLSearchParams({
       anio_iso: String(loadedFinance.periodo.anio_iso),

@@ -144,6 +144,6 @@ Los centros de costo se eliminan: la separación Barra/Restaurante ya la expresa
 
 Cada categoría declara su `tipo_costo` (fijo o variable) y si admite facturas. Fijos y Nómina cuentan como gastos fijos en el Estado de Resultados y el punto de equilibrio; todas las demás, como costos variables. Nómina y Comisiones no se capturan con facturas.
 
-Lista de gastos fijos con alta previa: implementada (migración 025, `catalog.gastos_fijos`). Comisiones con proyección y cierre real mensual: implementadas (migración 026). Pendiente de implementar: captura manual de nómina (ver `docs/categorias-gastos.md`).
+Lista de gastos fijos con alta previa: implementada (migración 025, `catalog.gastos_fijos`). Comisiones con proyección y cierre real mensual: implementadas (migración 026). Nómina con captura manual semanal por sucursal: implementada (migración 027). Detalle en `docs/categorias-gastos.md`.
 
 Cambio de contrato: las vistas `analytics.*` ya no exponen la columna `centro_costo` y `analytics.movimientos_gasto` añade `categoria_clave` y `tipo_costo`. Los libros de Excel que consuman esas vistas deben actualizarse.

@@ -586,39 +586,108 @@ def _weekly_fixed_provisions(
 def _weekly_actual_payroll(
     conn: Connection, *, anio_iso: int, semana_iso: int, sucursal_clave: str | None
 ) -> list[dict[str, Any]]:
-    return [dict(row) for row in conn.execute(
+    """Nómina capturada a mano para la semana (una fila por sucursal)."""
+    week_start = date.fromisocalendar(anio_iso, semana_iso, 1)
+    rows = conn.execute(
         """
-        WITH movimientos AS (
-            SELECT m.*,
-                   COALESCE(ps.anio_iso, m.anio_iso) AS anio_aplicacion,
-                   COALESCE(ps.semana_iso, m.semana_iso) AS semana_aplicacion,
-                   COALESCE(ps.monto, m.total) AS total_aplicado
-            FROM analytics.movimientos_gasto m
-            LEFT JOIN finance.periodificaciones_gasto pg ON
-                (m.tipo_documento = 'comprobante_interno' AND pg.comprobante_id = m.documento_origen_id)
-                OR (m.tipo_documento <> 'comprobante_interno' AND pg.factura_id = m.documento_origen_id)
-            LEFT JOIN finance.periodificacion_semanas ps ON ps.periodificacion_id = pg.id
-        )
-        SELECT DISTINCT ON (mv.sucursal_clave)
-               mv.movimiento_id, mv.tipo_documento, mv.documento_origen_id,
-               mv.proveedor, mv.fecha, mv.folio, mv.sucursal_clave, mv.sucursal,
-               mv.categoria, mv.subcategoria,
-               mv.total AS total_documento,
-               mv.total_aplicado::numeric(14,2) AS monto_aplicado,
-               COALESCE(NULLIF(ff.forma_pago, ''), NULLIF(ci.metodo_pago, ''), 'No especificado') AS pago,
-               (mv.total_aplicado <> mv.total) AS periodificado
-        FROM movimientos mv
-        LEFT JOIN core.facturas_finales ff
-          ON mv.tipo_documento <> 'comprobante_interno' AND ff.id = mv.movimiento_id
-        LEFT JOIN core.comprobantes_internos ci
-          ON mv.tipo_documento = 'comprobante_interno' AND ci.id = mv.documento_origen_id
-        WHERE mv.anio_aplicacion = %s AND mv.semana_aplicacion = %s
-          AND mv.categoria_clave = 'NOMINA'
-          AND (%s::text IS NULL OR mv.sucursal_clave = %s)
-        ORDER BY mv.sucursal_clave, mv.fecha DESC, mv.movimiento_id DESC
+        SELECT n.id AS documento_origen_id, s.clave AS sucursal_clave, s.nombre AS sucursal,
+               n.monto AS total_documento, n.monto AS monto_aplicado, n.nota
+        FROM finance.nomina_semanal n JOIN catalog.sucursales s ON s.id = n.sucursal_id
+        WHERE n.anio_iso = %s AND n.semana_iso = %s
+          AND (%s::text IS NULL OR s.clave = %s)
+        ORDER BY s.clave
         """,
         (anio_iso, semana_iso, sucursal_clave, sucursal_clave),
-    ).fetchall()]
+    ).fetchall()
+    return [
+        {
+            **row,
+            "movimiento_id": None,
+            "tipo_documento": "nomina_manual",
+            "proveedor": "Nómina capturada",
+            "fecha": week_start,
+            "folio": f"NOMINA-{anio_iso}-S{semana_iso:02d}",
+            "categoria": "Nómina",
+            "subcategoria": None,
+            "pago": row["nota"] or "Captura manual",
+            "periodificado": False,
+        }
+        for row in rows
+    ]
+
+
+def get_payroll_overview(
+    conn: Connection, *, anio_iso: int, semana_iso: int, sucursal_clave: str | None
+) -> list[dict[str, Any]]:
+    """Nómina capturada y provisión estimada por sucursal para una semana ISO."""
+    try:
+        week_end = date.fromisocalendar(anio_iso, semana_iso, 7)
+    except ValueError as exc:
+        raise DomainError("La semana ISO indicada no existe.", 422) from exc
+    captured = {
+        row["sucursal_clave"]: row for row in _weekly_actual_payroll(
+            conn, anio_iso=anio_iso, semana_iso=semana_iso, sucursal_clave=sucursal_clave
+        )
+    }
+    estimated: dict[str, Decimal] = {}
+    for provision in _weekly_fixed_provisions(conn, week_end=week_end, sucursal_clave=sucursal_clave):
+        if provision["es_nomina"]:
+            key = provision["sucursal_clave"]
+            estimated[key] = estimated.get(key, Decimal("0")) + provision["monto_semanal"]
+    branches = conn.execute(
+        """
+        SELECT clave, nombre FROM catalog.sucursales
+        WHERE activa AND clave <> 'POR-ASIGNAR' AND (%s::text IS NULL OR clave = %s)
+        ORDER BY clave
+        """,
+        (sucursal_clave, sucursal_clave),
+    ).fetchall()
+    return [
+        {
+            "sucursal_clave": branch["clave"],
+            "sucursal": branch["nombre"],
+            "estimado": estimated.get(branch["clave"]),
+            "capturado": captured[branch["clave"]]["monto_aplicado"] if branch["clave"] in captured else None,
+            "nota": captured[branch["clave"]]["nota"] if branch["clave"] in captured else None,
+        }
+        for branch in branches
+    ]
+
+
+def save_payroll(conn: Connection, data: dict[str, Any], actor: str) -> dict[str, Any]:
+    try:
+        date.fromisocalendar(data["anio_iso"], data["semana_iso"], 1)
+    except ValueError as exc:
+        raise DomainError("La semana ISO indicada no existe.", 422) from exc
+    branch = conn.execute(
+        "SELECT id FROM catalog.sucursales WHERE clave = %s AND activa AND clave <> 'POR-ASIGNAR'",
+        (data["sucursal_clave"],),
+    ).fetchone()
+    if not branch:
+        raise DomainError("Sucursal no encontrada o inactiva.", 422)
+    if data.get("monto") is None:
+        conn.execute(
+            "DELETE FROM finance.nomina_semanal WHERE sucursal_id = %s AND anio_iso = %s AND semana_iso = %s",
+            (branch["id"], data["anio_iso"], data["semana_iso"]),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO finance.nomina_semanal (sucursal_id, anio_iso, semana_iso, monto, nota, registrada_por)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (sucursal_id, anio_iso, semana_iso) DO UPDATE
+            SET monto = EXCLUDED.monto, nota = EXCLUDED.nota,
+                registrada_por = EXCLUDED.registrada_por, actualizada_en = now()
+            """,
+            (branch["id"], data["anio_iso"], data["semana_iso"], data["monto"],
+             (data.get("nota") or "").strip() or None, actor),
+        )
+    return next(
+        item for item in get_payroll_overview(
+            conn, anio_iso=data["anio_iso"], semana_iso=data["semana_iso"],
+            sucursal_clave=data["sucursal_clave"],
+        )
+    )
 
 
 def get_weekly_statement(

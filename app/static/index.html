@@ -425,6 +425,16 @@
           <div class="panel-title"><div><h2>Evolución semanal</h2><p>Ventas y utilidad operativa de las últimas semanas disponibles.</p></div></div>
           <div id="finance-trend" class="finance-trend"></div>
         </section>
+        <details class="panel finance-wide payroll-panel collapsible-panel" id="payroll-panel">
+          <summary class="panel-title"><div><h2>Nómina de la semana</h2><p id="payroll-period-label">Captura manual por sucursal.</p></div><span class="expand-label">Ver nómina</span></summary>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table finance-table">
+              <thead><tr><th>Sucursal</th><th class="numeric">Estimado</th><th class="numeric">Capturado</th><th>Nota</th><th></th></tr></thead>
+              <tbody id="payroll-rows"></tbody>
+            </table>
+          </div>
+          <small>Si no hay captura, el Estado de Resultados usa el estimado. Al guardar un importe sustituye al estimado; vacío lo elimina.</small>
+        </details>
         <details class="panel finance-wide commission-panel collapsible-panel" id="commission-panel">
           <summary class="panel-title"><div><h2>Comisiones del mes</h2><p id="commission-period-label">Proyección por porcentaje y cierre real mensual.</p></div><span class="expand-label">Ver comisiones</span></summary>
           <div class="analytics-table-wrap">

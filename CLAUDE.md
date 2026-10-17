@@ -7,7 +7,7 @@ Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-017) y
 ## Stack
 - Python + FastAPI (`app/main.py`), PostgreSQL 15+ (docker `compose.yaml`), front estático sin build (`app/static/`: `index.html`, `app.js`, `styles.css`).
 - OCR local: PDF digital por capa de texto primero; PaddleOCR solo como respaldo (`app/ocr/`).
-- Migraciones SQL versionadas en `db/migrations/` (001–024). Nueva migración = siguiente número, nunca editar las existentes.
+- Migraciones SQL versionadas en `db/migrations/` (001–027). Nueva migración = siguiente número, nunca editar las existentes.
 - Tests: `tests/` (pytest) y `db/tests/001_pipeline_smoke.sql`.
 
 ## Comandos (PowerShell, Windows)
@@ -23,7 +23,7 @@ docker compose up -d
 - La IA devuelve estructura validada; **nunca SQL libre** (D-003). Validaciones matemáticas, fiscales y de duplicidad viven en código y PostgreSQL.
 - Toda factura pasa por revisión humana (D-007). Solo lo aprobado alimenta `analytics.movimientos_gasto`.
 - Excel consume solo vistas estables de `analytics` (D-006).
-- Nueve categorías fijas de gasto (D-017, `docs/categorias-gastos.md`); **no existen centros de costo**. Fijos y Nómina = gasto fijo; el resto = costo variable. Nómina y Comisiones no se capturan con facturas.
+- Nueve categorías fijas de gasto (D-017, `docs/categorias-gastos.md`); **no existen centros de costo**. Fijos y Nómina = gasto fijo; el resto = costo variable. Nómina (captura manual semanal) y Comisiones (proyección + cierre real mensual) no se capturan con facturas; los proveedores FIJOS requieren alta previa en la lista de gastos fijos.
 - Cada gasto pertenece a una sola sucursal; `POR-ASIGNAR` bloquea la aprobación.
 - Gastos `FIJOS` se periodifican por semanas ISO con ≥4 días en el periodo; el residuo de centavos va a la última semana.
 - Editar una factura aprobada crea nueva versión, audita y reemplaza el movimiento vigente sin duplicar.

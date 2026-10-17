@@ -225,6 +225,15 @@ class ComisionCierreRequest(BaseModel):
     actualizado_por: str = Field(min_length=1, max_length=200)
 
 
+class NominaRequest(BaseModel):
+    sucursal_clave: str = Field(min_length=1, max_length=50)
+    anio_iso: int = Field(ge=2000, le=2100)
+    semana_iso: int = Field(ge=1, le=53)
+    monto: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    nota: str | None = Field(default=None, max_length=300)
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
 class VentaManualRequest(BaseModel):
     sucursal_id: UUID
     fecha: date

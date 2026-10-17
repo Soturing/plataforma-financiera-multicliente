@@ -25,7 +25,9 @@ from app.financial_reports import (
     get_report_options,
 )
 from app.accounting import (
+    get_payroll_overview,
     get_weekly_statement,
+    save_payroll,
     get_sales_breakdown,
     list_accounting_catalogs,
     register_sale,
@@ -74,6 +76,7 @@ from app.schemas import (
     GastoFijoRequest,
     ComisionParametroRequest,
     ComisionCierreRequest,
+    NominaRequest,
     EliminarDocumentosRequest,
     EliminarLoteRequest,
     CancelarLoteRequest,
@@ -681,6 +684,28 @@ def upsert_fixed_expense(
     payload = data.model_dump(mode="python")
     actor = payload.pop("actualizado_por")
     return save_fixed_expense(conn, payload, actor)
+
+
+@app.get("/api/v1/finanzas/nomina", tags=["finanzas"])
+def payroll_overview(
+    anio_iso: int = Query(ge=2000, le=2100),
+    semana_iso: int = Query(ge=1, le=53),
+    sucursal_clave: str | None = Query(default=None),
+    conn: Connection = Depends(get_connection),
+):
+    return get_payroll_overview(
+        conn, anio_iso=anio_iso, semana_iso=semana_iso, sucursal_clave=sucursal_clave
+    )
+
+
+@app.post("/api/v1/finanzas/nomina", tags=["finanzas"])
+def upsert_payroll(
+    data: NominaRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_payroll(conn, payload, actor)
 
 
 @app.get("/api/v1/finanzas/comisiones/parametros", tags=["finanzas"])
