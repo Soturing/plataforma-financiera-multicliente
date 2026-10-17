@@ -104,6 +104,7 @@ from uuid import uuid4
 import shutil
 from app.jobs import is_batch_active, start_batch_job, start_invoice_job
 from app.classification import reclassify_batch
+from app.provider_template import build_provider_template
 from app.provider_catalog import (
     apply_provider_import,
     list_providers,
@@ -614,17 +615,10 @@ def providers_catalog(conn: Connection = Depends(get_connection)):
 
 @app.get("/api/v1/proveedores/plantilla", tags=["catalogos"])
 def provider_catalog_template():
-    template = (
-        Path(__file__).resolve().parents[1]
-        / "deliverables"
-        / "plantilla_catalogo_proveedores.xlsx"
-    )
-    if not template.is_file():
-        raise DomainError("La plantilla todavía no está disponible.", 404)
-    return FileResponse(
-        template,
+    return Response(
+        build_provider_template(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="Plantilla-catalogo-proveedores.xlsx",
+        headers={"Content-Disposition": 'attachment; filename="Plantilla-catalogo-proveedores.xlsx"'},
     )
 
 

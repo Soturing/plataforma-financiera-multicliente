@@ -25,6 +25,27 @@ def test_provider_catalog_template_is_downloadable():
     assert response.content.startswith(b"PK")
 
 
+def test_provider_catalog_template_round_trips_through_importer():
+    from openpyxl import load_workbook
+
+    from app.provider_catalog import parse_provider_file
+    from app.provider_template import PROVIDER_HEADERS, build_provider_template
+
+    workbook = load_workbook(BytesIO(build_provider_template()))
+    assert [cell.value for cell in workbook["Proveedores"][1]] == PROVIDER_HEADERS
+    workbook["Proveedores"].append(
+        [None, "Proveedor Ficticio SA", "Proveedor Ficticio", None, "FIJOS", "RENTA", "GENERAL", "PF | P FICTICIO", "SI"]
+    )
+    buffer = BytesIO()
+    workbook.save(buffer)
+
+    rows = parse_provider_file("catalogo.xlsx", buffer.getvalue())
+
+    assert len(rows) == 1
+    assert rows[0]["nombre_normalizado"] == "Proveedor Ficticio"
+    assert rows[0]["categoria"] == "FIJOS"
+
+
 def cleanup_learning_data():
     with psycopg.connect(get_settings().database_url) as conn:
         conn.execute(
