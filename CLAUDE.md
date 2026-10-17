@@ -24,6 +24,7 @@ docker compose up -d
 - Toda factura pasa por revisión humana (D-007). Solo lo aprobado alimenta `analytics.movimientos_gasto`.
 - Excel consume solo vistas estables de `analytics` (D-006).
 - Nueve categorías fijas de gasto (D-017, `docs/categorias-gastos.md`); **no existen centros de costo**. Fijos y Nómina = gasto fijo; el resto = costo variable. Nómina (captura manual semanal) y Comisiones (proyección + cierre real mensual) no se capturan con facturas; los proveedores FIJOS requieren alta previa en la lista de gastos fijos.
+- **Selector de sucursal:** con una sucursal seleccionada, toda pantalla, tabla, reporte y exportación muestra solo esa sucursal. "Consolidado" muestra las sucursales a las que el usuario tiene permiso (hoy todas, hasta que existan usuarios y permisos); nunca cifras de sucursales fuera de ese alcance. Aplica a todo lo nuevo.
 - Cada gasto pertenece a una sola sucursal; `POR-ASIGNAR` bloquea la aprobación.
 - Gastos `FIJOS` se periodifican por semanas ISO con ≥4 días en el periodo; el residuo de centavos va a la última semana.
 - Editar una factura aprobada crea nueva versión, audita y reemplaza el movimiento vigente sin duplicar.

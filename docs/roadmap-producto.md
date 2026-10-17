@@ -50,3 +50,9 @@ Objetivo: convertir la solución actual en un producto configurable y aislado pa
 - Añadir pruebas automáticas que detecten fuga de datos o de identidad visual entre restaurantes.
 
 Este frente deberá coordinarse desde el inicio con usuarios, permisos y control de suscripción, porque los tres dependen del mismo modelo de cliente.
+
+## 5. Rediseño de la navegación
+
+Estado: **anotado por el usuario; sin diseñar ni implementar**.
+
+La navegación actual (menú lateral con Operación, Finanzas y Configuración, y las pantallas `#/bandeja`, `#/archivo`, `#/finanzas`, `#/reportes`, `#/analytics`, `#/catalogos`) resulta confusa y poco fácil de usar. Antes de tocarla hay que definir con el usuario las tareas principales de cada rol (capturista, finanzas, administración), qué pantallas se usan a diario y cómo debe aplicarse el selector de sucursal en todas ellas.
