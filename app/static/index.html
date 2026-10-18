@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Plataforma Financiera</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260829-9">
+  <link rel="stylesheet" href="/static/styles.css?v=20261018-1">
 </head>
 <body>
   <header class="topbar">
@@ -15,7 +15,8 @@
     <div class="topbar-context"><small>Sección actual</small><strong id="current-section">Operación</strong></div>
     <div class="topbar-actions">
       <span id="system-status" class="status-dot"><i></i> Verificando</span>
-      <label class="user-field"><span>Operador</span><input id="operator" value="capturista-demo" autocomplete="name"></label>
+      <label class="user-field" id="operator-field"><span>Operador</span><input id="operator" value="capturista-demo" autocomplete="name"></label>
+      <div class="session-area" id="session-area" aria-live="polite"></div>
     </div>
   </header>
 
@@ -33,6 +34,7 @@
         <a href="#/analytics" data-route="analytics"><span class="nav-icon">↗</span><span><strong>Análisis</strong><small>Gastos y tendencias</small></span></a>
         <p class="nav-label">Configuración</p>
         <a href="#/catalogos" data-route="catalogs"><span class="nav-icon">⚙</span><span><strong>Catálogos</strong><small>Proveedores y reglas</small></span></a>
+        <a href="#/accesos" data-route="access"><span class="nav-icon">⚿</span><span><strong>Usuarios y accesos</strong><small>Personas, roles y bitácora</small></span></a>
       </nav>
       <div class="sidebar-help"><span>Captura rápida</span><button class="button primary" id="sidebar-upload" type="button">＋ Cargar documentos</button></div>
       <p class="app-version" id="app-version" aria-label="Versión del sistema"></p>
@@ -41,6 +43,13 @@
     <main id="app" aria-live="polite"></main>
   </div>
   <div id="toast" class="toast" role="status"></div>
+
+  <section id="context-modal" class="upload-modal hidden" role="dialog" aria-modal="true" aria-labelledby="context-title">
+    <div class="upload-dialog panel context-dialog">
+      <div class="panel-title"><div><h2 id="context-title">¿Con qué rol vas a trabajar?</h2><p>Tu sesión opera con un solo cliente y un solo rol a la vez. Cambiar de rol después pide confirmar tu identidad.</p></div><button class="icon-button" id="close-context" type="button" aria-label="Cerrar">×</button></div>
+      <div id="context-options" class="context-options"></div>
+    </div>
+  </section>
 
   <template id="home-template">
     <section class="page home-page">
@@ -737,6 +746,7 @@
     </section>
   </template>
 
-  <script src="/static/app.js?v=20260829-2" defer></script>
+  <script src="/static/acceso.js?v=20261018-1" defer></script>
+  <script src="/static/app.js?v=20261018-1" defer></script>
 </body>
 </html>

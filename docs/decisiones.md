@@ -191,3 +191,19 @@ Se autoaloja Keycloak con su propio PostgreSQL dentro del plano de control (D-01
 Keycloak sólo demuestra la identidad. Sesiones, membresías, roles, alcance y auditoría pertenecen al plano de control de la aplicación, que recibe la identidad mediante OIDC con código y PKCE del lado del servidor.
 
 Si la prueba técnica de la fase 1 no confirma alguno de sus puntos, la decisión se revisa antes de iniciar la fase 2. Comparación y criterios en `docs/seguridad/plan-implementacion.md`.
+
+## D-022 — Modo de acceso abierto durante la transición
+
+Estado: adoptada como transitoria (2026-10-18).
+
+`FACTURAS_ACCESO_MODO=abierto` conserva el uso sin sesión de las pantallas existentes mientras las personas registran sus llaves y passkeys. Quien inicia sesión opera siempre con sus permisos, y su identidad se registra como autor. Las rutas de identidades, auditoría, clientes y operación técnica exigen sesión incluso en modo abierto.
+
+El modo seguro (`FACTURAS_ACCESO_MODO=seguro`) exige sesión en toda ruta de datos. Es obligatorio antes de producción y antes de incorporar al segundo cliente.
+
+## D-023 — El 8010 sirve la rama de seguridad sobre la base compartida
+
+Estado: provisional (2026-10-18), pendiente de revisión.
+
+El puerto 8010 sirve la rama `claude/roadmap-usuarios-seguridad-8e43ba` (toda la línea `migrate-legacy` más usuarios y seguridad), con la misma base de negocio (5434) y los mismos archivos. El plano de control y Keycloak tienen bases propias.
+
+La fase 5 (RLS forzado y cuenta sin propiedad) no se aplica sobre la base compartida, porque dejaría inoperable la línea `migrate-legacy` si se vuelve a ejecutar contra ella. Antes de la fase 5 hay que decidir entre fusionar esta rama en `migrate-legacy` o darle a esta rama su propia base.

@@ -1,6 +1,6 @@
 # Plan de implementación: usuarios, acceso y aislamiento
 
-Estado: aprobado (2026-10-18). Fase 1: prueba técnica completada; resultados en [fase1-identidad.md](fase1-identidad.md).
+Estado: aprobado (2026-10-18). Fase 1 completada ([fase1-identidad.md](fase1-identidad.md)); fases 2 a 4 implementadas en modo abierto ([fases2-4-acceso.md](fases2-4-acceso.md)); fase 5 pendiente de D-023.
 
 Base: D-016, D-018, D-019, D-020, D-021 y los documentos de esta carpeta. Cada fase termina con pruebas automáticas y sólo se da por cerrada cuando sus criterios de salida pasan.
 

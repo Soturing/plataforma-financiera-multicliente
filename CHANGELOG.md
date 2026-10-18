@@ -10,7 +10,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 - **Proveedor de identidad (fase 1, D-021):** Keycloak autoalojado en el perfil `identidad` de `compose.yaml`
   con realm versionado sin contraseñas: llave física FIDO2 para roles globales, passkey o código de recuperación
   para el resto y alta sólo por invitación. Prueba técnica automatizada en `tests/identidad/`; resultados y
-  bloqueos de producción en `docs/seguridad/fase1-identidad.md`. Todavía no está conectado a la aplicación.
+  bloqueos de producción en `docs/seguridad/fase1-identidad.md`.
+- **Usuarios y acceso seguro (fases 2–4):** inicio de sesión con passkey o llave física desde la barra superior,
+  elección de rol, pantalla **Usuarios y accesos** (`#/accesos`) con invitaciones, suspensión, cierre de
+  sesiones y bitácora inmutable encadenada; menú filtrado por rol; autorización en el servidor para las 86
+  rutas; autor de cada operación tomado de la sesión. Modo abierto por defecto (D-022). Detalle y guía en
+  `docs/seguridad/fases2-4-acceso.md`.
 
 ## [0.1.0] - 2026-10-18
 

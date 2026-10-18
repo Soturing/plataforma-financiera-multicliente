@@ -3,6 +3,7 @@
 Uso:
     python -m app.seguridad.instalar cliente
     python -m app.seguridad.instalar director --correo persona@dominio --nombre "Nombre Apellido"
+    python -m app.seguridad.instalar reenviar --correo persona@dominio
 
 `cliente` registra este data plane como tenant y copia el registro de sus
 sucursales. `director` crea la primera identidad con los roles Director y
@@ -80,6 +81,27 @@ def crear_director(correo: str, nombre: str) -> dict:
     return {"identidad_id": str(ident["id"]), "correo": correo, "invitacion": "enviada"}
 
 
+def reenviar_invitacion(correo: str) -> dict:
+    """Nueva invitación de un solo uso (la anterior caduca a las 24 h y no se reactiva)."""
+    with control.conexion_control() as conn:
+        ident = conn.execute(
+            "SELECT * FROM control.identidades WHERE lower(correo) = lower(%s)", (correo,)
+        ).fetchone()
+        if ident is None or ident["estado"] not in ("INVITADA", "REGISTRO_PENDIENTE"):
+            raise SystemExit("Sólo se reenvía a personas invitadas que aún no se activan.")
+        privilegiada = conn.execute(
+            """SELECT bool_or(r.privilegiado) AS p FROM control.asignaciones a JOIN control.roles r ON r.codigo = a.rol
+               WHERE a.identidad_id = %s AND a.estado = 'ACTIVA'""",
+            (ident["id"],),
+        ).fetchone()["p"] or False
+        keycloak_admin.enviar_invitacion(ident["idp_subject"], llave_fisica=privilegiada)
+        control.registrar_evento(
+            conn, "INVITACION_REENVIADA", actor_tipo="SISTEMA", modulo="IDENTIDADES", accion="ADMINISTRAR",
+            recurso_tipo="identidad", recurso_id=str(ident["id"]),
+        )
+    return {"correo": correo, "invitacion": "reenviada", "llave_fisica": privilegiada}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.seguridad.instalar")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -87,8 +109,15 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("director", help="Crea al primer director e envía su invitación")
     d.add_argument("--correo", required=True)
     d.add_argument("--nombre", required=True)
+    r = sub.add_parser("reenviar", help="Envía una nueva invitación a una persona que aún no se activa")
+    r.add_argument("--correo", required=True)
     args = parser.parse_args(argv)
-    resultado = registrar_cliente() if args.comando == "cliente" else crear_director(args.correo, args.nombre)
+    if args.comando == "cliente":
+        resultado = registrar_cliente()
+    elif args.comando == "director":
+        resultado = crear_director(args.correo, args.nombre)
+    else:
+        resultado = reenviar_invitacion(args.correo)
     print(resultado)
     return 0
 

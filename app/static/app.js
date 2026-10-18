@@ -23,6 +23,8 @@ let reviewQueueQuery = "";
 let firstReviewId = null;
 
 function operator() {
+  // Con sesión, el servidor usa siempre la identidad de la sesión (D-014).
+  if (typeof session !== "undefined" && session.autenticado) return session.nombre;
   return document.querySelector("#operator").value.trim() || "capturista-demo";
 }
 
@@ -30,7 +32,12 @@ async function api(url, options = {}) {
   const response = await fetch(url, options);
   const type = response.headers.get("content-type") || "";
   const body = type.includes("json") ? await response.json() : await response.text();
-  if (!response.ok) throw new Error(body.detail || body || "No se pudo completar la operación");
+  if (!response.ok) {
+    const detail = body?.detail;
+    if (typeof handleAccessError === "function") handleAccessError(response.status, detail);
+    const message = detail && typeof detail === "object" ? (detail.mensaje || detail.codigo) : detail;
+    throw new Error(message || (typeof body === "string" && body) || "No se pudo completar la operación");
+  }
   return body;
 }
 
@@ -50,13 +57,14 @@ function isPdfFile(file) {
 }
 
 async function bootstrap() {
+  await loadSession();
   try {
     const health = await api("/health");
     const status = document.querySelector("#system-status");
     status.classList.add("ok");
     status.innerHTML = `<i></i> ${health.status === "ok" ? "Sistema disponible" : "Revisar sistema"}`;
     document.querySelector("#app-version").textContent = health.version ? `Versión ${health.version}` : "";
-    catalogs = await api("/api/v1/catalogos");
+    if (!session.autenticado || hasModule("CATALOGOS")) catalogs = await api("/api/v1/catalogos");
   } catch (error) {
     document.querySelector("#system-status").innerHTML = "<i></i> Sin conexión";
     notify(error.message, true);
@@ -75,6 +83,7 @@ function route() {
   else if (location.hash.startsWith("#/reportes")) renderFinancialReports();
   else if (location.hash.startsWith("#/finanzas")) renderFinanceDashboard();
   else if (location.hash === "#/catalogos") renderProviderAdmin();
+  else if (location.hash === "#/accesos") renderAccess();
   else renderHome();
 }
 
@@ -87,6 +96,7 @@ function currentRoute() {
   if (location.hash.startsWith("#/reportes")) return ["reports", "Reportes financieros"];
   if (location.hash.startsWith("#/finanzas")) return ["finance", "Estado de Resultados"];
   if (location.hash === "#/catalogos") return ["catalogs", "Catálogos y reglas"];
+  if (location.hash === "#/accesos") return ["access", "Usuarios y accesos"];
   if (location.hash.startsWith("#/facturas/")) return ["dashboard", "Revisión de documento"];
   return ["home", "Inicio"];
 }
@@ -96,6 +106,15 @@ async function renderHome() {
   document.querySelector("#show-quick-guide").onclick = () => {
     document.querySelector("#guia-rapida").scrollIntoView({behavior: "smooth", block: "start"});
   };
+  if (session.autenticado) {
+    app.querySelector(".welcome-copy h1 span, h1 span").textContent = session.nombre.split(" ")[0];
+    if (!hasModule("DOCUMENTOS")) {
+      ["#home-pending", "#home-invoices", "#home-other"].forEach(selector => {
+        document.querySelector(selector).textContent = "—";
+      });
+      return;
+    }
+  }
   try {
     const summary = await api("/api/v1/revision/resumen");
     document.querySelector("#home-pending").textContent = summary.total ?? 0;

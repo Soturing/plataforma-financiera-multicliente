@@ -222,6 +222,7 @@ class Navegador:
         while r.is_redirect:
             destino = urljoin(str(r.url), r.headers["Location"])
             if destino.startswith(self.redirect_uri):
+                self.ultimo_callback = destino
                 q = parse_qs(urlparse(destino).query)
                 if "error" in q:
                     raise PermissionError(f"Callback con error: {q}")
@@ -313,6 +314,26 @@ class Navegador:
             else:
                 return ResultadoAcceso(None, paso)
         return ResultadoAcceso(None, paso if isinstance(paso, Pagina) else None)
+
+    def autenticar_desde(self, url: str, correo: str) -> dict[str, str]:
+        """Recorre una URL de autorización generada por la app y devuelve `code` y `state` del callback."""
+        paso = self.ir(url)
+        enviada = False
+        for _ in range(6):
+            if isinstance(paso, str):
+                q = parse_qs(urlparse(self.ultimo_callback).query)
+                return {"code": q["code"][0], "state": q["state"][0]}
+            campos = _campos(paso)
+            if enviada and "authenticatorData" in campos:
+                break
+            if "username" in campos:
+                paso = self.enviar(paso, paso.formulario(con_campo="username"), {"username": correo})
+            elif "authenticatorData" in campos:
+                enviada = True
+                paso = self.enviar(paso, paso.formulario(con_campo="authenticatorData"), self._firmar(paso))
+            else:
+                break
+        raise AssertionError(f"No se completó el acceso: {paso.resumen() if isinstance(paso, Pagina) else paso}")
 
     def completar_invitacion(self, enlace: str, *, etiqueta: str = "dispositivo de prueba") -> Pagina | str:
         """Abre el enlace del correo y registra el autenticador (y códigos si se piden)."""
