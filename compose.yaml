@@ -37,6 +37,7 @@ services:
       - ./db/migrations/026_sales_commissions.sql:/docker-entrypoint-initdb.d/36-sales-commissions.sql:ro
       - ./db/migrations/027_manual_payroll.sql:/docker-entrypoint-initdb.d/37-manual-payroll.sql:ro
       - ./db/migrations/028_document_type_quotation.sql:/docker-entrypoint-initdb.d/38-document-type-quotation.sql:ro
+      - ./db/migrations/029_own_entities.sql:/docker-entrypoint-initdb.d/39-own-entities.sql:ro
       - ./db/seeds/001_demo_catalogs.sql:/docker-entrypoint-initdb.d/20-demo-catalogs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturas_app} -d ${POSTGRES_DB:-facturas_demo}"]

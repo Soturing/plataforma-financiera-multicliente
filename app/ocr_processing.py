@@ -34,11 +34,20 @@ def reading_context(conn: Connection) -> tuple[tuple[str, ...], tuple[str, ...],
         for value in (branch["razon_social"], branch["nombre"], branch["restaurante"], *(branch["aliases"] or [])):
             if value and len(str(value).strip()) >= 4 and str(value) not in own_names:
                 own_names.append(str(value))
+    for entity in conn.execute(
+        "SELECT nombre, rfc FROM catalog.entidades_propias WHERE activa"
+    ).fetchall():
+        if entity["rfc"]:
+            own_rfcs.append(entity["rfc"].upper())
+        if len(entity["nombre"].strip()) >= 4 and entity["nombre"] not in own_names:
+            own_names.append(entity["nombre"])
     known = tuple(
         row["rfc"].upper() for row in conn.execute(
             "SELECT DISTINCT rfc FROM catalog.proveedores WHERE rfc IS NOT NULL AND activo"
         ).fetchall()
     )
+    own_set = set(own_rfcs)
+    known = tuple(rfc for rfc in known if rfc not in own_set)  # un RFC propio nunca es de proveedor
     return tuple(dict.fromkeys(own_rfcs)), tuple(own_names), known
 
 

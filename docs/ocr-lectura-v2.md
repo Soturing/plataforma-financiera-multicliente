@@ -54,3 +54,18 @@ acierto sobre documentos nuevos.
 - Remisiones y notas manuscritas: ningún OCR local las lee de forma fiable; siempre a revisión humana.
 - Agrupar páginas de una misma factura (mismo folio) y alertar duplicados ticket + factura.
 - Medir PaddleOCR medium en equipo con GPU (paquete aparte); en CPU de laptop no es viable.
+
+## Razones sociales propias
+
+El lector necesita saber cuáles son las razones sociales y RFC del grupo (los receptores) para no
+confundirlos con el proveedor. Se toman del RFC y la razón social de cada sucursal y de la tabla
+`catalog.entidades_propias` (migración 029; API `GET/POST /api/v1/entidades-propias`). Sin ellas el acierto
+de proveedor baja de ~76 % a ~64 % en la Prueba 1; el RFC no cambia porque el QR y la posición bastan.
+
+## Reproceso de un lote
+
+`POST /api/v1/lotes/{id}/reprocesar` vuelve a leer los documentos no aprobados del lote con la lectura vigente
+(crea nuevas versiones de OCR e interpretación; las anteriores se conservan). Cuidado: un catálogo de
+proveedores creado por una lectura antigua (nombres o RFC erróneos, RFC del cliente como proveedor) contamina
+la nueva lectura, porque el proveedor encontrado por RFC reemplaza el nombre propuesto; conviene depurarlo
+antes de reprocesar.

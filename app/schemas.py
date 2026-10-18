@@ -198,6 +198,13 @@ class SubcategoriaCatalogoRequest(BaseModel):
     actualizado_por: str = Field(min_length=1, max_length=200)
 
 
+class EntidadPropiaRequest(BaseModel):
+    nombre: str = Field(min_length=4, max_length=250)
+    rfc: str | None = Field(default=None, max_length=20)
+    activa: bool = True
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
 class GastoFijoRequest(BaseModel):
     proveedor_id: UUID
     subcategoria_id: UUID | None = None

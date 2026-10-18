@@ -74,6 +74,7 @@ from app.schemas import (
     ProveedorCatalogoRequest,
     SubcategoriaCatalogoRequest,
     GastoFijoRequest,
+    EntidadPropiaRequest,
     ComisionParametroRequest,
     ComisionCierreRequest,
     NominaRequest,
@@ -110,6 +111,7 @@ from app.jobs import is_batch_active, start_batch_job, start_invoice_job
 from app.classification import reclassify_batch
 from app.provider_template import build_provider_template
 from app.fixed_expenses import list_fixed_expenses, save_fixed_expense
+from app.own_entities import list_own_entities, save_own_entity
 from app.commissions import (
     delete_parameter, list_parameters, monthly_summary, save_closing, save_parameter,
 )
@@ -669,6 +671,18 @@ def upsert_subcategory(
     payload = data.model_dump(mode="python")
     actor = payload.pop("actualizado_por")
     return save_subcategory(conn, payload, actor)
+
+
+@app.get("/api/v1/entidades-propias", tags=["catalogos"])
+def own_entities(conn: Connection = Depends(get_connection)):
+    return list_own_entities(conn)
+
+
+@app.post("/api/v1/entidades-propias", tags=["catalogos"])
+def upsert_own_entity(data: EntidadPropiaRequest, conn: Connection = Depends(get_connection)):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_own_entity(conn, payload, actor)
 
 
 @app.get("/api/v1/gastos-fijos", tags=["catalogos"])
