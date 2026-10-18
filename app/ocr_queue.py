@@ -25,6 +25,7 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from pypdf.errors import PyPdfError
 
+from app.database import conectar
 from app.errors import DomainError
 from app.ocr_processing import persist_ocr_result
 
@@ -385,7 +386,7 @@ class _LeaseKeeper(threading.Thread):
         # carga o una página tarda, el worker debe seguir contando como vivo.
         interval = max(1.0, min(10.0, self._lease_seconds / 3))
         try:
-            with psycopg.connect(self._database_url, autocommit=True) as conn:
+            with conectar(self._database_url, autocommit=True) as conn:
                 while not self._halt.wait(interval):
                     renewed = conn.execute(
                         """
@@ -476,7 +477,7 @@ def run_worker(
         while not stop.is_set():
             try:
                 if conn is None or conn.closed:
-                    conn = psycopg.connect(database_url, autocommit=True, row_factory=dict_row)
+                    conn = conectar(database_url, autocommit=True, row_factory=dict_row)
                     register_worker(conn, worker_id)
                 if time.monotonic() - last_maintenance >= MAINTENANCE_EVERY_SECONDS:
                     recovered = recover_stale(conn)

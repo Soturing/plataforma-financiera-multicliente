@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
+from apoyo_db import conexion_pruebas
 
 
 client = TestClient(app)
@@ -18,7 +19,7 @@ def _catalog_values():
 
 
 def _cleanup():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute(
             "DELETE FROM core.comprobantes_internos WHERE creado_por LIKE 'pytest-recibos%'"
         )
@@ -72,7 +73,7 @@ def test_one_approval_publishes_receipt_and_generates_pdf():
         assert approved.status_code == 200, approved.text
         assert approved.json()["estado"] == "aprobado"
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             movement = conn.execute(
                 """
                 SELECT tipo_documento, total, estado_fiscal
@@ -190,7 +191,7 @@ def test_fixed_internal_receipt_can_be_periodified():
             json={"autorizada_por": "gerente-periodo-1"},
         )
         assert approved.status_code == 200, approved.text
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             rows = conn.execute(
                 """
                 SELECT ps.semana_iso, ps.monto

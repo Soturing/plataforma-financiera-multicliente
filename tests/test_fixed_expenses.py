@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
+from apoyo_db import conexion_pruebas
 
 
 client = TestClient(app)
@@ -11,7 +12,7 @@ PROVIDER = "Proveedor Fijo Pytest"
 
 
 def cleanup():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute(
             "DELETE FROM catalog.gastos_fijos WHERE proveedor_id IN "
             "(SELECT id FROM catalog.proveedores WHERE nombre_normalizado = %s)",

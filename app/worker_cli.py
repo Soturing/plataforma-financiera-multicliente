@@ -20,9 +20,9 @@ import sys
 import threading
 import time
 
-import psycopg
 
 from app.config import get_settings
+from app.database import conectar
 from app.ocr_queue import run_worker
 
 SUPERVISOR_LOCK_KEY = 7_204_001
@@ -84,7 +84,7 @@ def _terminate(child: subprocess.Popen) -> None:
 def _supervise(processes: int) -> int:
     settings = get_settings()
     # El candado vive mientras viva esta conexión: solo puede haber un supervisor.
-    lock_conn = psycopg.connect(settings.database_url, autocommit=True)
+    lock_conn = conectar(settings.database_url, autocommit=True)
     acquired = lock_conn.execute(
         "SELECT pg_try_advisory_lock(%s)", (SUPERVISOR_LOCK_KEY,)
     ).fetchone()[0]

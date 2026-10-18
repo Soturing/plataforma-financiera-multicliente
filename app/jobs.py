@@ -3,9 +3,9 @@ import sys
 import time
 from pathlib import Path
 
-import psycopg
 
 from app.config import Settings, get_settings
+from app.database import conectar
 from app.ocr_queue import WORKER_ALIVE_SECONDS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +17,7 @@ _last_spawn = float("-inf")
 
 def workers_alive(settings: Settings | None = None) -> bool:
     settings = settings or get_settings()
-    with psycopg.connect(settings.database_url) as conn:
+    with conectar(settings.database_url) as conn:
         return bool(
             conn.execute(
                 """

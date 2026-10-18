@@ -58,8 +58,8 @@ Pruebas: `tests/seguridad/` (42) y `tests/identidad/` (14). La de punta a punta 
 ## 3. Supuestos que tomé (revisar)
 
 1. **Nómina:** el capturista puede capturarla (`NOMINA: OPERAR`). La matriz no lo decía y D-017 la trata como captura semanal operativa.
-2. **Consolidados con sucursales limitadas:** si la asignación tiene sólo algunas sucursales, las vistas consolidadas se **deniegan** y piden elegir una sucursal. La regla de CLAUDE.md ("Consolidado muestra las sucursales permitidas") requiere filtrar dentro de cada consulta; queda para la fase 5 junto con RLS.
-3. **Consulta por identificador:** abrir un documento por su ID todavía no comprueba la sucursal del documento (sí el rol y el módulo). Se cierra en la fase 5 con RLS por sucursal.
+2. **Consolidados con sucursales limitadas:** resuelto en la fase 5. Con RLS verificado, el consolidado muestra sólo las sucursales permitidas; sin RLS se sigue denegando.
+3. **Consulta por identificador:** resuelto en la fase 5. La base no devuelve documentos de otras sucursales (404).
 4. **Director inicial:** se creó como `director@consultora.test` porque no tenía tu correo para esto. Ver §4.
 
 ## 4. Guía para tu revisión
@@ -95,12 +95,12 @@ docker compose --profile identidad up -d identidad correo-pruebas control-postgr
 
 Keycloak usa ~1 GB de RAM y tarda varios minutos en arrancar en este equipo.
 
-- El 8010 corre en la pestaña "app 8010" del panel de Terminal, desde esta rama.
+- El 8010 corre en la pestaña "app 8010" del panel de Terminal, desde esta rama, con `python -m app.plataforma.tenants servir --clave GRUPO-DEMO` (base propia en 5440; fase 5).
 - Para volver a servir `migrate-legacy` en el 8010: detén esa pestaña (Ctrl-C) y, desde `.claude\worktrees\migrate-legacy-project-d73050`, ejecuta `.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8010`.
 - El puerto 8000 (copia legacy) quedó apagado. Sus dos tareas programadas ("Facturacion IA" y "Facturacion IA Demo") están **desactivadas**, no borradas; se reactivan con `Enable-ScheduledTask`.
 
 ## 5. Lo que falta
 
-- **Fase 5 (data plane por cliente + RLS):** no la empecé. La base de negocio (5434) es compartida con `migrate-legacy`: activar `FORCE ROW LEVEL SECURITY` y una cuenta sin propiedad rompería esa línea si se vuelve a ejecutar. Hace falta decidir si esta rama usa su propia base (D-023).
+- **Fase 5:** hecha; ver [fase5-data-plane.md](fase5-data-plane.md).
 - **Fase 6:** ya hay invitación, suspensión y cierre de sesiones. Faltan dispositivo perdido, recuperación asistida con espera de 24 h, baja completa, inactividad, y obligar a registrar una passkey nueva tras usar un código de recuperación.
 - **Fase 7:** secretos, claves por cliente, respaldos y pruebas de penetración.

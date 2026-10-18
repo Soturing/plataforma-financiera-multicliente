@@ -14,10 +14,13 @@ from uuid import UUID
 
 from psycopg import Connection
 
+from app.config import get_settings
 from app.seguridad import control
 from app.seguridad.politica import ROLES_PRIVILEGIADOS, Nivel, modulos_visibles
 
-COOKIE = "fa_sesion"
+# Una cookie por cliente: en producción cada cliente tiene su subdominio; en local,
+# varios clientes en puertos distintos de 127.0.0.1 compartirían la misma cookie.
+COOKIE = "fa_sesion_" + get_settings().tenant_clave.lower()
 
 INACTIVIDAD_PRIVILEGIADA = timedelta(minutes=15)
 ABSOLUTA_PRIVILEGIADA = timedelta(hours=8)
@@ -56,6 +59,7 @@ class Contexto:
     tenant_clave: str | None = None
     modulos: list[str] | None = None
     sucursales: list[str] | None = None
+    restaurantes: list[str] = field(default_factory=list)
     condicionados: list[str] = field(default_factory=list)
     opciones: list[dict] = field(default_factory=list)
 
@@ -82,6 +86,7 @@ class Contexto:
             "tenant": self.tenant_clave,
             "modulos": modulos_visibles(self.rol, self.modulos) if self.rol else [],
             "sucursales": self.sucursales,
+            "restaurantes": self.restaurantes,
             "condicionados": self.condicionados,
             "llave_fisica": self.llave_fisica,
             "metodo_auth": self.metodo_auth,
@@ -93,6 +98,7 @@ class Contexto:
                 {
                     "asignacion_id": str(o["id"]), "rol": o["rol"], "rol_nombre": o["rol_nombre"],
                     "tenant": o["tenant_clave"] or "Todos los clientes", "sucursales": o["sucursales"],
+                    "restaurantes": o["restaurantes"],
                     "disponible": o.get("disponible", True), "motivo": o.get("motivo_no_disponible"),
                 }
                 for o in self.opciones
@@ -125,6 +131,7 @@ def opciones_disponibles(asignaciones: list[dict], *, llave_fisica: bool, tenant
 def crear_sesion(
     conn: Connection,
     *,
+    tenant_id: UUID,
     identidad: dict,
     asignaciones: list[dict],
     llave_fisica: bool,
@@ -139,12 +146,12 @@ def crear_sesion(
     token = secrets.token_urlsafe(48)
     fila = conn.execute(
         """
-        INSERT INTO control.sesiones (token_hash, identidad_id, inactividad_max, expira_absoluta,
+        INSERT INTO control.sesiones (token_hash, identidad_id, tenant_id, inactividad_max, expira_absoluta,
                                       autenticado_en, metodo_auth, llave_fisica, idp_sid, ip, agente)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         """,
         (
-            huella(token), identidad["id"], inactividad, ahora() + absoluta, autenticado_en,
+            huella(token), identidad["id"], tenant_id, inactividad, ahora() + absoluta, autenticado_en,
             "LLAVE_FISICA" if llave_fisica else "PASSKEY", llave_fisica, idp_sid, ip, (agente or "")[:300],
         ),
     ).fetchone()
@@ -212,6 +219,9 @@ def resolver(conn: Connection, token: str | None, tenant: dict) -> tuple[Context
         return None, "desconocida"
     if s["revocada_en"] is not None:
         return None, "revocada"
+    if s["tenant_id"] is not None and s["tenant_id"] != tenant_id:
+        # Sesión de otro cliente: se rechaza aquí sin cerrarla en su cliente legítimo.
+        return None, "otro_tenant"
     momento = ahora()
     if s["expira_absoluta"] <= momento:
         revocar(conn, s["id"], "Duración máxima alcanzada")
@@ -234,13 +244,14 @@ def resolver(conn: Connection, token: str | None, tenant: dict) -> tuple[Context
     )
     if s["asignacion_id"] is not None:
         actual = next((a for a in opciones if a["id"] == s["asignacion_id"] and a["disponible"]), None)
-        if actual is None or s["tenant_id"] != tenant_id:
+        if actual is None:
             # Se retiró o cambió la asignación: la sesión no conserva la autorización (§8.1).
-            revocar(conn, s["id"], "Asignación retirada o fuera de este cliente")
+            revocar(conn, s["id"], "Asignación retirada")
             return None, "asignacion_retirada"
         ctx.asignacion_id, ctx.rol, ctx.rol_nombre = actual["id"], actual["rol"], actual["rol_nombre"]
         ctx.tenant_id, ctx.tenant_clave = tenant_id, tenant["clave"]
         ctx.modulos, ctx.sucursales, ctx.condicionados = actual["modulos"], actual["sucursales"], actual["condicionados"] or []
+        ctx.restaurantes = actual["restaurantes"] or []
 
     if momento - s["ultimo_uso"] >= _TOQUE_MINIMO:
         conn.execute("UPDATE control.sesiones SET ultimo_uso = %s WHERE id = %s", (momento, s["id"]))

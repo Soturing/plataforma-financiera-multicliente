@@ -872,3 +872,7 @@ h1 { font-size: clamp(28px, 3vw, 38px); }
   .topbar-context { display: none; }
   .session-avatar { width: 28px; height: 28px; }
 }
+.invite-branches { flex-direction: column; flex-wrap: nowrap; }
+.invite-restaurant { display: grid; gap: 4px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.invite-restaurant small { color: var(--muted); font-weight: 500; margin-left: 6px; }
+.invite-branch { padding-left: 26px; }

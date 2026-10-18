@@ -22,6 +22,7 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 - [Plan de implementación](plan-implementacion.md) — aprobado (D-018 a D-021).
 - [Fase 1 — Proveedor de identidad](fase1-identidad.md) — prueba técnica completada en local.
 - [Fases 2 a 4 — Plano de control, sesiones y autorización](fases2-4-acceso.md) — visible en el 8010; incluye la guía de revisión.
+- [Fase 5 — Data plane por cliente y RLS](fase5-data-plane.md) — `GRUPO-DEMO` en su propio stack; segundo cliente ficticio para pruebas.
 
 ## Regla de implementación
 

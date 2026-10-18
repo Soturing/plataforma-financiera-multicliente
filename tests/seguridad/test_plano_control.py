@@ -85,5 +85,33 @@ def test_rol_no_global_exige_cliente_y_sucursales_validas(fabrica, control_app):
             (ident["id"],),
         )
     control_app.rollback()
-    with pytest.raises(psycopg.Error, match="Sucursal fuera"):
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
         fabrica.asignacion(ident["id"], "CONSULTORA_CAPTURISTA", sucursales=["INEXISTENTE"])
+
+
+def test_alcance_por_restaurante_incluye_todas_sus_sucursales(fabrica, control_app):
+    ident = fabrica.identidad()
+    asig = fabrica.asignacion(ident["id"], "CONSULTORA_CAPTURISTA", restaurantes=["REST-UNO"], sucursales=["SUR"])
+    fila = control_app.execute(
+        "SELECT sucursales, restaurantes FROM control.alcance_asignacion WHERE asignacion_id = %s", (asig["id"],)
+    ).fetchone()
+    assert fila == {"sucursales": ["CENTRO", "NORTE", "SUR"], "restaurantes": ["REST-UNO"]}
+
+
+def test_sin_restaurantes_ni_sucursales_el_alcance_es_todo(fabrica, control_app):
+    ident = fabrica.identidad()
+    asig = fabrica.asignacion(ident["id"], "CONSULTORA_CAPTURISTA")
+    fila = control_app.execute(
+        "SELECT sucursales FROM control.alcance_asignacion WHERE asignacion_id = %s", (asig["id"],)
+    ).fetchone()
+    assert fila["sucursales"] is None
+
+
+def test_el_alcance_no_apunta_a_otro_cliente(fabrica, control_app):
+    ident = fabrica.identidad()
+    global_ = fabrica.asignacion(ident["id"], "CONSULTORA_DIRECTOR", tenant=False)
+    with pytest.raises(psycopg.Error, match="cliente de la asignación"):
+        control_app.execute(
+            "INSERT INTO control.asignacion_sucursales (asignacion_id, tenant_id, sucursal_clave) VALUES (%s, %s, 'NORTE')",
+            (global_["id"], fabrica.tenant["id"]),
+        )

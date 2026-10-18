@@ -9,6 +9,7 @@ from pypdf import PdfReader
 from app.config import get_settings
 from app.main import app
 from app.financial_reports import month_iso_periods
+from apoyo_db import conexion_pruebas
 
 
 ACTOR = "pytest-finance"
@@ -134,7 +135,7 @@ def test_blank_executive_report_has_explanations_without_financial_values():
 
 
 def cleanup_catalog_test_data():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         ids = conn.execute(
             "SELECT id FROM catalog.subcategorias WHERE clave = %s",
             (SUBCATEGORY_KEY,),
@@ -249,7 +250,7 @@ def test_accounting_subcategories_are_configurable():
         assert deactivated.status_code == 200, deactivated.text
         assert deactivated.json()["activa"] is False
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             audit_count = conn.execute(
                 "SELECT count(*) FROM audit.cambios_catalogo WHERE realizado_por = %s",
                 (ACTOR,),

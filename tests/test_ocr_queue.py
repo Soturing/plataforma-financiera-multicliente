@@ -22,6 +22,7 @@ from app.ocr_queue import (
     run_worker,
 )
 from app.repository import cancel_batch, create_invoice
+from apoyo_db import conexion_pruebas
 
 ACTOR = "pytest-queue"
 TEXT = "FACTURA\nPROVEEDOR DEMO SA DE CV\nRFC AAA010101AAA\nFecha 15/03/2026\nSubtotal 100.00\nIVA 16.00\nTotal 116.00"
@@ -53,7 +54,7 @@ class FakeEngine:
 
 @pytest.fixture
 def db():
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         _cleanup(conn)
         conn.commit()
         yield conn
@@ -102,7 +103,7 @@ def job_of(conn, invoice_id) -> dict:
 
 
 def worker_conn():
-    return psycopg.connect(get_settings().database_url, autocommit=True, row_factory=dict_row)
+    return conexion_pruebas(autocommit=True, row_factory=dict_row)
 
 
 def drain(engine, **kwargs) -> int:

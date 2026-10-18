@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.main import app
 from app.ocr_processing import find_possible_duplicates
 from tests.test_pipeline_api import cleanup_test_invoices, one_page_pdf
+from apoyo_db import conexion_pruebas
 
 client = TestClient(app)
 
@@ -48,7 +49,7 @@ def test_same_provider_total_and_close_date_is_flagged_but_far_dates_are_not():
         first = create_processed_invoice(1, "777.77", "2026-08-07", "T-1")
         second = create_processed_invoice(2, "777.77", "2026-08-08", "F-9")
         far = create_processed_invoice(3, "777.77", "2026-02-01", "F-10")
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             found = lookup(conn, second, "777.77", date(2026, 8, 8), "F-9", "detectado")
             assert [item["factura_id"] for item in found if str(item["factura_id"]) == first] != []
             assert all(str(item["factura_id"]) != far for item in found)
@@ -62,7 +63,7 @@ def test_same_detected_folio_is_flagged_as_continuation_or_duplicate():
     try:
         first = create_processed_invoice(1, "100.00", "2026-08-07", "A-55")
         second = create_processed_invoice(2, "250.00", "2026-08-20", "A-55")
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             found = lookup(conn, second, "250.00", date(2026, 8, 20), "A-55", "detectado")
             assert any(str(item["factura_id"]) == first and item["motivo"] == "folio" for item in found)
             # Un folio inventado desde la fecha nunca cuenta como coincidencia.

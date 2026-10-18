@@ -16,6 +16,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   sesiones y bitácora inmutable encadenada; menú filtrado por rol; autorización en el servidor para las 86
   rutas; autor de cada operación tomado de la sesión. Modo abierto por defecto (D-022). Detalle y guía en
   `docs/seguridad/fases2-4-acceso.md`.
+- **Data plane por cliente (fase 5, D-024):** cada administración tiene su propio stack (base, volumen, red,
+  credenciales y archivos) creado con `python -m app.plataforma.tenants alta`; restaurantes formales
+  (`catalog.restaurantes`, migración 032); RLS forzado por tenant y sucursal con cuenta sin privilegios
+  (migración 033); alcance de las personas por restaurante completo o por sucursal. El 8010 ya usa el data plane
+  propio de `GRUPO-DEMO`. Detalle en `docs/seguridad/fase5-data-plane.md`.
 
 ## [0.1.0] - 2026-10-18
 

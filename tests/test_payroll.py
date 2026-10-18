@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
+from apoyo_db import conexion_pruebas
 
 
 client = TestClient(app)
@@ -13,7 +14,7 @@ ACTOR = "pytest-nomina"
 
 
 def cleanup():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         for table in ("finance.ventas", "finance.nomina_semanal"):
             conn.execute(
                 f"DELETE FROM {table} WHERE sucursal_id IN (SELECT id FROM catalog.sucursales WHERE clave = %s)",
@@ -24,7 +25,7 @@ def cleanup():
 
 def setup_branch():
     cleanup()
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         branch_id = conn.execute(
             "INSERT INTO catalog.sucursales (clave, nombre, restaurante) VALUES (%s, 'Pytest Nomina', 'Pytest') RETURNING id",
             (BRANCH,),

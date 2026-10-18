@@ -99,9 +99,39 @@ def tenant_por_clave(conn: Connection, clave: str) -> dict | None:
 
 def sucursales_tenant(conn: Connection, tenant_id: UUID) -> list[dict]:
     return conn.execute(
-        "SELECT clave, nombre, data_plane_id, activa FROM control.sucursales WHERE tenant_id = %s ORDER BY clave",
+        "SELECT clave, nombre, restaurante_clave, data_plane_id, activa FROM control.sucursales WHERE tenant_id = %s ORDER BY clave",
         (tenant_id,),
     ).fetchall()
+
+
+def restaurantes_tenant(conn: Connection, tenant_id: UUID) -> list[dict]:
+    return conn.execute(
+        "SELECT clave, nombre, activo FROM control.restaurantes WHERE tenant_id = %s ORDER BY nombre",
+        (tenant_id,),
+    ).fetchall()
+
+
+def ids_data_plane(conn: Connection, tenant_id: UUID, claves: list[str]) -> list[str]:
+    """UUID de catalog.sucursales en la base del cliente, para el alcance RLS."""
+    filas = conn.execute(
+        "SELECT data_plane_id::text AS id FROM control.sucursales WHERE tenant_id = %s AND clave = ANY(%s)",
+        (tenant_id, claves),
+    ).fetchall()
+    return [f["id"] for f in filas]
+
+
+def guardar_alcance(conn: Connection, asignacion_id: UUID, tenant_id: UUID,
+                    restaurantes: list[str] | None, sucursales: list[str] | None) -> None:
+    for clave in restaurantes or []:
+        conn.execute(
+            "INSERT INTO control.asignacion_restaurantes (asignacion_id, tenant_id, restaurante_clave) VALUES (%s, %s, %s)",
+            (asignacion_id, tenant_id, clave),
+        )
+    for clave in sucursales or []:
+        conn.execute(
+            "INSERT INTO control.asignacion_sucursales (asignacion_id, tenant_id, sucursal_clave) VALUES (%s, %s, %s)",
+            (asignacion_id, tenant_id, clave),
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -127,9 +157,10 @@ def asignaciones_vigentes(conn: Connection, identidad_id: UUID) -> list[dict]:
     )
     return conn.execute(
         """
-        SELECT a.*, r.nombre AS rol_nombre, r.privilegiado, r.global AS rol_global,
+        SELECT a.*, al.sucursales, al.restaurantes, r.nombre AS rol_nombre, r.privilegiado, r.global AS rol_global,
                t.clave AS tenant_clave, t.nombre AS tenant_nombre, t.estado AS tenant_estado
         FROM control.asignaciones a
+        JOIN control.alcance_asignacion al ON al.asignacion_id = a.id
         JOIN control.roles r ON r.codigo = a.rol
         LEFT JOIN control.tenants t ON t.id = a.tenant_id
         WHERE a.identidad_id = %s AND a.estado = 'ACTIVA' AND a.vigente_desde <= now()
@@ -145,13 +176,14 @@ def listar_identidades(conn: Connection) -> list[dict]:
         SELECT i.id, i.correo, i.nombre, i.estado, i.creado_en, i.ultimo_acceso_en,
                coalesce(json_agg(json_build_object(
                    'id', a.id, 'rol', a.rol, 'tenant', t.clave, 'modulos', a.modulos,
-                   'sucursales', a.sucursales, 'condicionados', a.condicionados,
+                   'sucursales', al.sucursales, 'restaurantes', al.restaurantes, 'condicionados', a.condicionados,
                    'estado', a.estado, 'vigente_hasta', a.vigente_hasta
                ) ORDER BY a.creado_en) FILTER (WHERE a.id IS NOT NULL), '[]') AS asignaciones,
                (SELECT count(*) FROM control.sesiones s
                  WHERE s.identidad_id = i.id AND s.revocada_en IS NULL AND s.expira_absoluta > now()) AS sesiones_abiertas
         FROM control.identidades i
         LEFT JOIN control.asignaciones a ON a.identidad_id = i.id AND a.estado IN ('ACTIVA', 'PENDIENTE')
+        LEFT JOIN control.alcance_asignacion al ON al.asignacion_id = a.id
         LEFT JOIN control.tenants t ON t.id = a.tenant_id
         GROUP BY i.id
         ORDER BY i.nombre

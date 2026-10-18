@@ -202,8 +202,22 @@ El modo seguro (`FACTURAS_ACCESO_MODO=seguro`) exige sesión en toda ruta de dat
 
 ## D-023 — El 8010 sirve la rama de seguridad sobre la base compartida
 
-Estado: provisional (2026-10-18), pendiente de revisión.
+Estado: resuelta por D-024 (2026-10-18): el 8010 sirve el data plane propio de `GRUPO-DEMO` (5440); la 5434 queda sólo para `migrate-legacy`.
 
 El puerto 8010 sirve la rama `claude/roadmap-usuarios-seguridad-8e43ba` (toda la línea `migrate-legacy` más usuarios y seguridad), con la misma base de negocio (5434) y los mismos archivos. El plano de control y Keycloak tienen bases propias.
 
 La fase 5 (RLS forzado y cuenta sin propiedad) no se aplica sobre la base compartida, porque dejaría inoperable la línea `migrate-legacy` si se vuelve a ejecutar contra ella. Antes de la fase 5 hay que decidir entre fusionar esta rama en `migrate-legacy` o darle a esta rama su propia base.
+
+## D-024 — Tenant = administración; restaurantes y sucursales estratificados en su base
+
+Estado: adoptada (2026-10-18).
+
+Un tenant es una administración o grupo restaurantero (el cliente de la consultora), no un restaurante. Cada tenant tiene su propio stack (vía 4 de D-016 y D-019): backend, workers, PostgreSQL, archivos, red y credenciales propios, generados desde una plantilla.
+
+Dentro de un tenant, todos sus restaurantes y sucursales comparten la base, estratificados así:
+
+- `catalog.restaurantes` formaliza la jerarquía restaurante → sucursal, que hoy es texto libre;
+- las asignaciones pueden dar alcance por restaurante completo o por sucursal, y se guardan en tablas pivote con integridad referencial;
+- RLS forzado por tenant y por sucursal es la segunda barrera dentro de la base: aunque el código omita un filtro, la base no devuelve filas fuera del alcance.
+
+La fase 5 crea el primer stack (`GRUPO-DEMO`) con una copia de la base 5434, que queda intacta para la línea `migrate-legacy`. El 8010 pasa a usar ese stack. Si un restaurante cambia de dueño, sus datos se extraen a un stack nuevo mediante un procedimiento puntual.

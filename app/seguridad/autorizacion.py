@@ -15,6 +15,7 @@ from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 
 from app.config import get_settings
+from app.database import rls_verificado, sucursales_actuales
 from app.seguridad import control, sesiones
 from app.seguridad.politica import MODULOS_SIEMPRE_CON_SESION, RUTAS, Nivel, permitido
 
@@ -72,6 +73,7 @@ async def _sustituir_autor(request: Request, etiqueta: str) -> None:
 
 async def autorizar_ruta(request: Request) -> None:
     actor_actual.set(None)
+    sucursales_actuales.set("*")
     ruta = request.scope.get("route")
     if not isinstance(ruta, APIRoute):
         return
@@ -91,6 +93,7 @@ async def autorizar_ruta(request: Request) -> None:
 
     decision = _Decision()
     ctx = None
+    alcance_rls = "*"
     with control.conexion_control() as conn:
         tenant = control.tenant_por_clave(conn, settings.tenant_clave)
         if tenant is None:
@@ -104,6 +107,11 @@ async def autorizar_ruta(request: Request) -> None:
         peticion = request.headers.get("x-request-id") or uuid.uuid4().hex
 
         if ctx is None:
+            if motivo == "otro_tenant":
+                control.registrar_evento(
+                    conn, "INTENTO_ENTRE_TENANTS", "RECHAZO", actor_tipo="ANONIMO", tenant_id=tenant["id"],
+                    ip=ip, peticion_id=peticion, sensibilidad="ALERTA", detalle={"ruta": ruta.path},
+                )
             if motivo == "revocada":
                 control.registrar_evento(
                     conn, "SESION_REVOCADA_REUTILIZADA", "RECHAZO", actor_tipo="ANONIMO", tenant_id=tenant["id"],
@@ -120,7 +128,8 @@ async def autorizar_ruta(request: Request) -> None:
             if ctx.sucursales is not None:
                 if sucursal is not None and sucursal not in ctx.sucursales:
                     decision.error = _error(403, "SUCURSAL_FUERA_DE_ALCANCE", "La sucursal no está en su asignación.")
-                elif sucursal is None and regla.sucursal_param is not None:
+                elif sucursal is None and regla.sucursal_param is not None and not rls_verificado():
+                    # Sin RLS efectivo en la base, un consolidado incluiría sucursales ajenas.
                     decision.error = _error(
                         403, "CONSOLIDADO_NO_PERMITIDO",
                         "Su asignación está limitada a algunas sucursales: seleccione una de ellas.",
@@ -149,10 +158,14 @@ async def autorizar_ruta(request: Request) -> None:
                     sensibilidad=regla.nivel.name, politica=f"{ctx.rol}:{regla.modulo}:{regla.accion}",
                     detalle={"metodo": metodo},
                 )
+            if decision.error is None and ctx.sucursales is not None:
+                # RLS en la base del cliente: sólo las sucursales de la asignación (fase 5).
+                alcance_rls = ",".join(control.ids_data_plane(conn, tenant["id"], ctx.sucursales))
     # La conexión ya confirmó la auditoría: ahora sí se puede rechazar.
     if decision.error is not None:
         raise decision.error
     if ctx is not None:
         request.state.contexto = ctx
         actor_actual.set(ctx.etiqueta)
+        sucursales_actuales.set(alcance_rls)
         await _sustituir_autor(request, ctx.etiqueta)

@@ -212,7 +212,7 @@ async function loadPeople() {
         <td><strong>${escapeHtml(p.nombre)}</strong><br><small>${escapeHtml(p.correo)}</small></td>
         <td>${stateBadge(p.estado)}</td>
         <td>${(p.asignaciones || []).map(a => `<div class="access-assignment"><strong>${escapeHtml(ROLE_NAMES[a.rol] || a.rol)}</strong>
-             <small>${escapeHtml(a.tenant || "Todos los clientes")} · ${a.sucursales ? escapeHtml(a.sucursales.join(", ")) : "todas las sucursales"}${a.modulos ? ` · ${escapeHtml(a.modulos.join(", "))}` : ""}${(a.condicionados || []).length ? ` · ${escapeHtml(a.condicionados.join(", "))}` : ""}</small></div>`).join("") || "<small>Sin asignaciones</small>"}</td>
+             <small>${escapeHtml(a.tenant || "Todos los clientes")} · ${scopeText(a)}${a.modulos ? ` · ${escapeHtml(a.modulos.join(", "))}` : ""}${(a.condicionados || []).length ? ` · ${escapeHtml(a.condicionados.join(", "))}` : ""}</small></div>`).join("") || "<small>Sin asignaciones</small>"}</td>
         <td>${p.sesiones_abiertas}</td>
         <td>${p.ultimo_acceso_en ? new Date(p.ultimo_acceso_en).toLocaleString("es-MX") : "—"}</td>
         <td class="access-actions">${p.correo === session.correo ? "<small>Tu cuenta</small>" : `
@@ -221,10 +221,17 @@ async function loadPeople() {
       </tr>`).join("");
     document.querySelectorAll("[data-suspend]").forEach(b => b.onclick = () => personAction(b.dataset.suspend, "suspender", "Motivo de la suspensión (obligatorio):"));
     document.querySelectorAll("[data-revoke]").forEach(b => b.onclick = () => personAction(b.dataset.revoke, "revocar-sesiones", "Motivo para cerrar sus sesiones (obligatorio):"));
-    document.querySelector("#open-invite").onclick = () => renderInviteForm(data.sucursales || []);
+    document.querySelector("#open-invite").onclick = () => renderInviteForm(data.restaurantes || [], data.sucursales || []);
   } catch (error) {
     document.querySelector("#people-caption").textContent = error.message;
   }
+}
+
+function scopeText(a) {
+  if (!a.sucursales) return "todas las sucursales";
+  const restaurantes = a.restaurantes || [];
+  const sueltas = restaurantes.length ? `${restaurantes.length} restaurante(s) completo(s): ${restaurantes.join(", ")} · sucursales: ` : "";
+  return escapeHtml(sueltas + a.sucursales.join(", "));
 }
 
 function stateBadge(estado) {
@@ -247,7 +254,7 @@ async function personAction(id, action, question) {
   } catch (error) { notify(error.message, true); }
 }
 
-function renderInviteForm(branches) {
+function renderInviteForm(restaurants, branches) {
   const wrap = document.querySelector("#invite-form-wrap");
   const globalAllowed = session.rol === "CONSULTORA_DIRECTOR";
   const roles = Object.entries(ROLE_NAMES).filter(([code]) => globalAllowed || !["CONSULTORA_DIRECTOR", "CONSULTORA_SEGURIDAD", "SOPORTE_TECNICO"].includes(code));
@@ -258,9 +265,13 @@ function renderInviteForm(branches) {
         <label>Correo<input name="correo" type="email" required maxlength="200"></label>
         <label>Rol<select name="rol">${roles.map(([code, name]) => `<option value="${code}" ${code === "CONSULTORA_CAPTURISTA" ? "selected" : ""}>${name}</option>`).join("")}</select></label>
       </div>
-      <fieldset class="invite-branches"><legend>Sucursales</legend>
-        <label class="check-row"><input type="checkbox" name="todas" checked><span>Todas las sucursales</span></label>
-        ${branches.map(b => `<label class="check-row"><input type="checkbox" name="sucursal" value="${escapeHtml(b.clave)}"><span>${escapeHtml(b.nombre)}</span></label>`).join("")}
+      <fieldset class="invite-branches"><legend>Alcance</legend>
+        <label class="check-row invite-all"><input type="checkbox" name="todas" checked><span>Todos los restaurantes y sucursales</span></label>
+        ${restaurants.filter(r => r.activo).map(r => `
+          <div class="invite-restaurant">
+            <label class="check-row"><input type="checkbox" name="restaurante" value="${escapeHtml(r.clave)}"><strong>${escapeHtml(r.nombre)}</strong><small>restaurante completo</small></label>
+            ${branches.filter(b => b.restaurante_clave === r.clave && b.activa).map(b => `<label class="check-row invite-branch"><input type="checkbox" name="sucursal" value="${escapeHtml(b.clave)}"><span>${escapeHtml(b.nombre)}</span></label>`).join("")}
+          </div>`).join("")}
       </fieldset>
       <label class="check-row"><input type="checkbox" name="csv"><span>Permitir exportación CSV masiva (permiso individual; exige reautenticación en cada descarga)</span></label>
       <label>Motivo de la invitación<input name="motivo" required minlength="5" maxlength="300" placeholder="Ej. Alta de capturista para el cierre semanal"></label>
@@ -270,17 +281,20 @@ function renderInviteForm(branches) {
   wrap.classList.remove("hidden");
   const form = wrap.querySelector("#invite-form");
   const all = form.querySelector("[name=todas]");
-  const singles = [...form.querySelectorAll("[name=sucursal]")];
+  const singles = [...form.querySelectorAll("[name=sucursal], [name=restaurante]")];
   all.onchange = () => { if (all.checked) singles.forEach(s => s.checked = false); };
   singles.forEach(s => s.onchange = () => { if (s.checked) all.checked = false; });
   wrap.querySelector("#cancel-invite").onclick = () => wrap.classList.add("hidden");
   form.onsubmit = async event => {
     event.preventDefault();
     const data = new FormData(form);
-    const sucursales = singles.filter(s => s.checked).map(s => s.value);
+    const restaurantes = data.getAll("restaurante");
+    const sucursales = data.getAll("sucursal");
+    const todo = all.checked || (!restaurantes.length && !sucursales.length);
     const payload = {
       nombre: data.get("nombre").trim(), correo: data.get("correo").trim(), rol: data.get("rol"),
-      sucursales: all.checked || !sucursales.length ? null : sucursales,
+      restaurantes: todo ? null : restaurantes,
+      sucursales: todo ? null : sucursales,
       condicionados: data.get("csv") ? ["EXPORTAR_CSV"] : [], motivo: data.get("motivo").trim(),
     };
     try {

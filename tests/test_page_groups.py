@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.main import app
 from app.page_groups import group_batch_pages
 from tests.test_pipeline_api import cleanup_test_invoices, one_page_pdf
+from apoyo_db import conexion_pruebas
 
 client = TestClient(app)
 BATCH_NAME = "pytest-grupo.pdf"
@@ -46,7 +47,7 @@ def make_batch_invoice(conn, batch_id, page: int, total, folio: str) -> str:
 
 def cleanup():
     cleanup_test_invoices()
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute("DELETE FROM core.lotes_carga WHERE archivo_original_nombre = %s", (BATCH_NAME,))
 
 
@@ -58,7 +59,7 @@ def queue_ids():
 def test_page_without_total_is_linked_to_the_main_page_and_leaves_the_queue():
     cleanup()
     try:
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             batch_id = new_batch(conn)
             main_id = make_batch_invoice(conn, batch_id, 1, "100.00", "G-77")
             extra_id = make_batch_invoice(conn, batch_id, 2, None, "G-77")
@@ -83,7 +84,7 @@ def test_page_without_total_is_linked_to_the_main_page_and_leaves_the_queue():
         assert separated.status_code == 200, separated.text
         assert extra_id in queue_ids()
 
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             assert group_batch_pages(conn, batch_id) == []  # lo separado a mano no se vuelve a ligar
         again = client.post(f"/api/v1/continuaciones/{link_id}/separar", json={"separado_por": "x"})
         assert again.status_code == 404
@@ -94,7 +95,7 @@ def test_page_without_total_is_linked_to_the_main_page_and_leaves_the_queue():
 def test_pages_with_totals_on_both_sides_are_not_grouped():
     cleanup()
     try:
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             batch_id = new_batch(conn)
             make_batch_invoice(conn, batch_id, 1, "100.00", "G-88")
             make_batch_invoice(conn, batch_id, 2, "100.00", "G-88")

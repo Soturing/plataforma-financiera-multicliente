@@ -144,7 +144,7 @@ def callback(request: Request, state: str | None = None, code: str | None = None
                                      ip=ip, metodo_auth=metodo, politica="SIN_ASIGNACION_EN_ESTE_CLIENTE")
             return RedirectResponse("/#/?acceso=sin_asignacion", status_code=303)
         token, sesion_id = sesiones.crear_sesion(
-            conn, identidad=ident, asignaciones=asignaciones, llave_fisica=verificada.llave_fisica,
+            conn, tenant_id=tenant["id"], identidad=ident, asignaciones=asignaciones, llave_fisica=verificada.llave_fisica,
             autenticado_en=verificada.autenticado_en, idp_sid=verificada.idp_sid, ip=ip, agente=agente,
         )
         control.registrar_evento(conn, "INICIO_SESION", actor_id=ident["id"], tenant_id=tenant["id"], sesion_id=sesion_id,
@@ -244,7 +244,12 @@ def elegir_contexto(datos: ContextoRequest, request: Request):
 @router.get("/api/v1/seguridad/identidades", tags=["seguridad"])
 def identidades(request: Request):
     with control.conexion_control() as conn:
-        return {"identidades": control.listar_identidades(conn), "sucursales": control.sucursales_tenant(conn, _tenant(conn)["id"])}
+        tenant = _tenant(conn)
+        return {
+            "identidades": control.listar_identidades(conn),
+            "restaurantes": control.restaurantes_tenant(conn, tenant["id"]),
+            "sucursales": control.sucursales_tenant(conn, tenant["id"]),
+        }
 
 
 class InvitacionRequest(BaseModel):
@@ -255,6 +260,8 @@ class InvitacionRequest(BaseModel):
         "CLIENTE_RESPONSABLE", "CLIENTE_FINANZAS", "CLIENTE_OPERADOR",
     ]
     modulos: list[str] | None = None
+    # Alcance: restaurantes completos y/o sucursales sueltas. Ambos vacíos = todas.
+    restaurantes: list[str] | None = None
     sucursales: list[str] | None = None
     condicionados: list[str] = Field(default_factory=list)
     vigente_hasta: str | None = None
@@ -267,7 +274,7 @@ def invitar(datos: InvitacionRequest, request: Request):
     ctx: sesiones.Contexto = request.state.contexto
     if datos.rol in ROLES_GLOBALES and ctx.rol != "CONSULTORA_DIRECTOR":
         raise DomainError("Sólo el director puede otorgar un rol global.", 403)
-    if datos.rol == "SOPORTE_TECNICO" and (datos.modulos or datos.sucursales):
+    if datos.rol == "SOPORTE_TECNICO" and (datos.modulos or datos.sucursales or datos.restaurantes):
         raise DomainError("Soporte técnico no recibe acceso a contenido de clientes.", 422)
     llave = datos.rol in ROLES_PRIVILEGIADOS
     with control.conexion_control() as conn:
@@ -276,24 +283,30 @@ def invitar(datos: InvitacionRequest, request: Request):
             raise DomainError("Ya existe una persona con ese correo. Agregue la asignación desde su ficha.", 409)
         if datos.correo.lower() == ctx.correo.lower():
             raise DomainError("No puede invitarse ni ampliar su propio acceso.", 403)
+        validos_r = {r["clave"] for r in control.restaurantes_tenant(conn, tenant["id"])}
+        validos_s = {s["clave"] for s in control.sucursales_tenant(conn, tenant["id"])}
+        if set(datos.restaurantes or []) - validos_r or set(datos.sucursales or []) - validos_s:
+            raise DomainError("Restaurante o sucursal fuera de este cliente.", 422)
         user_id = keycloak_admin.crear_usuario(datos.correo, datos.nombre, llave_fisica=llave)
         ident = conn.execute(
             "INSERT INTO control.identidades (idp_subject, correo, nombre, estado) VALUES (%s, %s, %s, 'INVITADA') RETURNING *",
             (user_id, datos.correo, datos.nombre),
         ).fetchone()
         asignacion = conn.execute(
-            """INSERT INTO control.asignaciones (identidad_id, rol, tenant_id, modulos, sucursales, condicionados,
+            """INSERT INTO control.asignaciones (identidad_id, rol, tenant_id, modulos, condicionados,
                                                  vigente_hasta, motivo, creado_por)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (ident["id"], datos.rol, None if datos.rol in ROLES_GLOBALES else tenant["id"], datos.modulos,
-             datos.sucursales, datos.condicionados, datos.vigente_hasta, datos.motivo, ctx.identidad_id),
+             datos.condicionados, datos.vigente_hasta, datos.motivo, ctx.identidad_id),
         ).fetchone()
+        if datos.rol not in ROLES_GLOBALES:
+            control.guardar_alcance(conn, asignacion["id"], tenant["id"], datos.restaurantes, datos.sucursales)
         keycloak_admin.enviar_invitacion(user_id, llave_fisica=llave)
         control.registrar_evento(
             conn, "INVITACION", actor_id=ctx.identidad_id, rol=ctx.rol, tenant_id=tenant["id"], modulo="IDENTIDADES",
             accion="ADMINISTRAR", recurso_tipo="identidad", recurso_id=str(ident["id"]), sesion_id=ctx.sesion_id,
             ip=_ip(request), motivo=datos.motivo, sensibilidad="C3" if datos.rol in ROLES_GLOBALES else "C2",
-            detalle={"rol": datos.rol, "modulos": datos.modulos, "sucursales": datos.sucursales,
+            detalle={"rol": datos.rol, "modulos": datos.modulos, "restaurantes": datos.restaurantes, "sucursales": datos.sucursales,
                      "condicionados": datos.condicionados, "asignacion": str(asignacion["id"])},
         )
     return {"identidad_id": str(ident["id"]), "estado": "INVITADA", "llave_fisica": llave}

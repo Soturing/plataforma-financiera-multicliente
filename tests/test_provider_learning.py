@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from app.config import get_settings
 from app.main import app
 from app.provider_catalog import find_provider, normalize_alias, normalize_provider_rfc
+from apoyo_db import conexion_pruebas
 
 
 TEST_ACTOR = "pytest-learning"
@@ -50,7 +51,7 @@ def test_provider_catalog_template_round_trips_through_importer():
 
 
 def cleanup_learning_data():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute(
             """
             DELETE FROM core.facturas_finales
@@ -110,7 +111,7 @@ def test_catalog_alias_resolves_to_canonical_provider():
     client = TestClient(app)
     try:
         provider = create_provider(client)
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             match = find_provider(conn, proposed_name=TEST_ALIAS)
             assert str(match["id"]) == provider["id"]
             assert match["nombre_normalizado"] == TEST_CANONICAL
@@ -137,7 +138,7 @@ def test_provider_csv_import_has_preview_before_commit():
         )
         assert preview.status_code == 200, preview.text
         assert preview.json()["creados"] == 1
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             assert conn.execute(
                 "SELECT count(*) FROM catalog.proveedores WHERE nombre_normalizado = %s",
                 (TEST_CANONICAL,),
@@ -189,7 +190,7 @@ def test_human_correction_can_remember_alias_and_retire_transient_provider():
             },
         )
         assert corrected.status_code == 200, corrected.text
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             match = find_provider(conn, proposed_name=TEST_ALIAS)
             assert str(match["id"]) == canonical["id"]
             transient = conn.execute(

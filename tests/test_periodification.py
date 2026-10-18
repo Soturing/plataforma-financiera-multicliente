@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.main import app
 from app.periodification import allocate_period, weeks_for_period
+from apoyo_db import conexion_pruebas
 
 
 client = TestClient(app)
@@ -16,7 +17,7 @@ client = TestClient(app)
 
 def cleanup():
     paths = []
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         paths = [
             Path(row[0]) for row in conn.execute(
                 "SELECT archivo_url FROM core.facturas WHERE creada_por = 'pytest-periodificacion'"
@@ -53,7 +54,7 @@ def test_bimonthly_period_can_span_nine_weeks_and_rounds_remainder_last():
 def test_fixed_invoice_is_applied_retroactively_across_the_month():
     cleanup()
     try:
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             baseline = dict(conn.execute(
                 """
                 SELECT semana_iso, gastos_fijos
@@ -110,7 +111,7 @@ def test_fixed_invoice_is_applied_retroactively_across_the_month():
         )
         assert approved.status_code == 200, approved.text
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             schedule = conn.execute(
                 """
                 SELECT ps.semana_iso, ps.monto

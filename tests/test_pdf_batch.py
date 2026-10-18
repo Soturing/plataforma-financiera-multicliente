@@ -7,6 +7,7 @@ from pypdf import PdfReader, PdfWriter
 
 from app.config import get_settings
 from app.main import app
+from apoyo_db import conexion_pruebas
 
 
 def make_pdf(page_count: int) -> bytes:
@@ -20,7 +21,7 @@ def make_pdf(page_count: int) -> bytes:
 
 def cleanup_batches():
     paths: list[str] = []
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         rows = conn.execute(
             """
             SELECT f.archivo_url FROM core.facturas f
@@ -72,7 +73,7 @@ def test_multipage_pdf_creates_one_invoice_per_page():
         batch = next(item for item in batches if item["id"] == result["id"])
         assert batch["recibidas"] == 3
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             rows = conn.execute(
                 """
                 SELECT pagina_origen, archivo_url FROM core.facturas
@@ -130,7 +131,7 @@ def test_batch_can_be_cancelled_and_selected_documents_deleted():
         assert cancelled.status_code == 200, cancelled.text
         assert cancelled.json()["canceladas"] == 3
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             invoices = conn.execute(
                 "SELECT id FROM core.facturas WHERE lote_id = %s ORDER BY pagina_origen",
                 (batch_id,),
@@ -143,7 +144,7 @@ def test_batch_can_be_cancelled_and_selected_documents_deleted():
         assert deleted.status_code == 200, deleted.text
         assert deleted.json()["eliminados"] == 3
         assert deleted.json()["archivos_eliminados"] == 4
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             assert conn.execute("SELECT count(*) FROM core.facturas WHERE lote_id = %s", (batch_id,)).fetchone()[0] == 0
             assert conn.execute("SELECT count(*) FROM core.lotes_carga WHERE id = %s", (batch_id,)).fetchone()[0] == 0
             assert conn.execute(

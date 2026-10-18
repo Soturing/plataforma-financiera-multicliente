@@ -9,6 +9,7 @@ from pypdf import PdfWriter
 from app.config import get_settings
 from app.main import app
 from app.repository import register_uuid_duplicates
+from apoyo_db import conexion_pruebas
 
 
 def one_page_pdf(label: str) -> bytes:
@@ -21,7 +22,7 @@ def one_page_pdf(label: str) -> bytes:
 
 
 def cleanup_test_invoices():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute(
             """
             DELETE FROM core.documentos_duplicados
@@ -114,7 +115,7 @@ def test_uuid_duplicate_is_removed_from_review_queue():
             assert processed.status_code == 200, processed.text
 
         fiscal_uuid = UUID("11111111-2222-4333-8444-555555555555")
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             conn.execute(
                 "UPDATE ai.interpretaciones SET uuid_fiscal = %s WHERE factura_id = ANY(%s)",
                 (fiscal_uuid, invoice_ids),
@@ -210,7 +211,7 @@ def test_pipeline_upload_process_approve():
         assert archived_match.status_code == 200, archived_match.text
         assert any(item["id"] == invoice_id for item in archived_match.json())
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             count = conn.execute(
                 "SELECT count(*) FROM analytics.facturas_consumo WHERE factura_id = %s",
                 (invoice_id,),
@@ -281,7 +282,7 @@ def test_approved_invoice_can_be_edited_without_duplicate_analytics():
         assert case.json()["factura"]["folio"] == "FAC-CORREGIDA-01"
         assert case.json()["factura"]["total"] == 1250.0
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             versions = conn.execute(
                 """
                 SELECT version, vigente, total
@@ -315,7 +316,7 @@ def test_approved_invoice_can_be_edited_without_duplicate_analytics():
             },
         )
         assert removed_from_analytics.status_code == 200, removed_from_analytics.text
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             assert conn.execute(
                 "SELECT count(*) FROM analytics.movimientos_gasto WHERE documento_origen_id = %s",
                 (invoice_id,),
@@ -371,7 +372,7 @@ def test_correction_allows_provider_branch_reference_and_optional_amounts():
         assert corrected.status_code == 200, corrected.text
         assert corrected.json()["estado"] == "aprobada"
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             row = conn.execute(
                 """
                 SELECT a.proveedor, a.subtotal, a.iva, a.total, a.categoria,
@@ -414,7 +415,7 @@ def test_reviewer_can_override_no_expense_classification():
         )
         assert processed.status_code == 200, processed.text
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             version = conn.execute(
                 "SELECT max(version) + 1 FROM core.clasificaciones_documentales WHERE factura_id = %s",
                 (invoice_id,),
@@ -441,7 +442,7 @@ def test_reviewer_can_override_no_expense_classification():
         assert overridden.status_code == 200, overridden.text
         assert overridden.json()["estado"] == "aprobada"
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             classification = conn.execute(
                 """
                 SELECT tipo::text, clasificador, evidencia->>'tipo_anterior'

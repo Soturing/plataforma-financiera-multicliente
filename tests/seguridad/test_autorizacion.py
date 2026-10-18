@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.main import app
 from app.seguridad.autorizacion import actor_actual, autorizar_ruta
-from app.seguridad.sesiones import COOKIE
+from app.seguridad.sesiones import COOKIE, huella
 
 CATALOGOS = "/api/v1/catalogos"
 IDENTIDADES = "/api/v1/seguridad/identidades"
@@ -122,10 +122,39 @@ def test_sucursal_fuera_de_la_asignacion(cliente, fabrica):
     assert r.status_code == 403 and codigo(r) == "SUCURSAL_FUERA_DE_ALCANCE"
 
 
-def test_consolidado_se_deniega_con_sucursales_limitadas(cliente, fabrica):
+def test_consolidado_con_sucursales_limitadas(cliente, fabrica):
+    """Sin RLS efectivo en la base se bloquea; con RLS verificado lo filtra la base (fase 5)."""
+    from app.database import rls_verificado
+
     _, _, token = fabrica.persona("CONSULTORA_CAPTURISTA", sucursales=["NORTE"])
     r = con(cliente, token).get(RESULTADOS)
-    assert r.status_code == 403 and codigo(r) == "CONSOLIDADO_NO_PERMITIDO"
+    if rls_verificado():
+        assert codigo(r) != "CONSOLIDADO_NO_PERMITIDO"
+    else:
+        assert r.status_code == 403 and codigo(r) == "CONSOLIDADO_NO_PERMITIDO"
+
+
+def test_alcance_por_restaurante_permite_sus_sucursales(cliente, fabrica):
+    _, _, token = fabrica.persona("CONSULTORA_CAPTURISTA", restaurantes=["REST-UNO"])
+    assert con(cliente, token).get(RESULTADOS, params={"sucursal_clave": "CENTRO"}).status_code not in (401, 403)
+    r = con(cliente, token).get(RESULTADOS, params={"sucursal_clave": "SUR"})
+    assert r.status_code == 403 and codigo(r) == "SUCURSAL_FUERA_DE_ALCANCE"
+
+
+def test_sesion_de_otro_cliente_se_rechaza_y_alerta(cliente, fabrica, control_app, modo_seguro):
+    _, _, token = fabrica.persona("CONSULTORA_CAPTURISTA")
+    otro = control_app.execute(
+        "INSERT INTO control.tenants (clave, nombre, data_plane_url) VALUES ('OTRO-CLIENTE', 'Otro', 'http://otro') "
+        "ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre RETURNING id"
+    ).fetchone()
+    control_app.execute("UPDATE control.sesiones SET tenant_id = %s WHERE token_hash = %s",
+                        (otro["id"], huella(token)))
+    control_app.commit()
+    assert con(cliente, token).get(CATALOGOS).status_code == 401
+    assert eventos(control_app, "INTENTO_ENTRE_TENANTS")
+    revocada = control_app.execute("SELECT revocada_en FROM control.sesiones WHERE token_hash = %s",
+                                   (huella(token),)).fetchone()
+    assert revocada["revocada_en"] is None
 
 
 def test_sucursal_propia_pasa_la_autorizacion(cliente, fabrica):

@@ -56,7 +56,8 @@ def base_control():
         pytest.skip("Base del plano de control no disponible")
     owner_pruebas = _con_base(owner, BASE_PRUEBAS)
     with psycopg.connect(owner_pruebas, autocommit=True) as conn:
-        conn.execute((RAIZ / "db/control/001_control_plane.sql").read_text(encoding="utf-8"))
+        for archivo in sorted((RAIZ / "db/control").glob("*.sql")):
+            conn.execute(archivo.read_text(encoding="utf-8"))
     settings = get_settings()
     original = settings.control_database_url
     settings.control_database_url = _con_base(app_url, BASE_PRUEBAS)
@@ -78,7 +79,7 @@ def control_app(base_control):
 
 @pytest.fixture
 def tenant(base_control):
-    """Tenant del data plane actual con dos sucursales sintéticas."""
+    """Tenant del data plane actual: dos restaurantes, tres sucursales sintéticas."""
     clave = get_settings().tenant_clave
     with psycopg.connect(base_control["app"], row_factory=dict_row) as conn:
         t = conn.execute(
@@ -86,11 +87,17 @@ def tenant(base_control):
                ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre RETURNING *""",
             (clave,),
         ).fetchone()
-        for suc in ("NORTE", "SUR"):
+        for rest in ("REST-UNO", "REST-DOS"):
             conn.execute(
-                """INSERT INTO control.sucursales (tenant_id, clave, nombre, data_plane_id) VALUES (%s, %s, %s, %s)
+                """INSERT INTO control.restaurantes (tenant_id, clave, nombre, data_plane_id) VALUES (%s, %s, %s, %s)
                    ON CONFLICT DO NOTHING""",
-                (t["id"], suc, f"Sucursal {suc}", uuid4()),
+                (t["id"], rest, f"Restaurante {rest}", uuid4()),
+            )
+        for suc, rest in (("NORTE", "REST-UNO"), ("CENTRO", "REST-UNO"), ("SUR", "REST-DOS")):
+            conn.execute(
+                """INSERT INTO control.sucursales (tenant_id, clave, nombre, data_plane_id, restaurante_clave)
+                   VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+                (t["id"], suc, f"Sucursal {suc}", uuid4(), rest),
             )
     return t
 
@@ -113,13 +120,18 @@ class Fabrica:
             ).fetchone()
 
     def asignacion(self, identidad_id: UUID, rol: str, *, tenant: bool = True, **campos) -> dict:
+        from app.seguridad.control import guardar_alcance
+
         with self._conn() as conn:
-            return conn.execute(
-                """INSERT INTO control.asignaciones (identidad_id, rol, tenant_id, modulos, sucursales, condicionados, motivo)
-                   VALUES (%s, %s, %s, %s, %s, %s, 'prueba') RETURNING *""",
+            fila = conn.execute(
+                """INSERT INTO control.asignaciones (identidad_id, rol, tenant_id, modulos, condicionados, motivo)
+                   VALUES (%s, %s, %s, %s, %s, 'prueba') RETURNING *""",
                 (identidad_id, rol, self.tenant["id"] if tenant else None, campos.get("modulos"),
-                 campos.get("sucursales"), campos.get("condicionados", [])),
+                 campos.get("condicionados", [])),
             ).fetchone()
+            if tenant:
+                guardar_alcance(conn, fila["id"], self.tenant["id"], campos.get("restaurantes"), campos.get("sucursales"))
+            return fila
 
     def sesion(self, identidad_id: UUID, asignacion: dict | None, *, llave_fisica: bool = False,
                autenticado_hace: timedelta = timedelta(minutes=1), inactividad=timedelta(minutes=30),
@@ -134,7 +146,7 @@ class Fabrica:
                        inactividad_max, expira_absoluta, autenticado_en, metodo_auth, llave_fisica)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (huella(token), identidad_id, asignacion["id"] if asignacion else None,
-                 asignacion["rol"] if asignacion else None, self.tenant["id"] if asignacion else None,
+                 asignacion["rol"] if asignacion else None, self.tenant["id"],
                  inactividad, ahora + expira_en, ahora - autenticado_hace,
                  "LLAVE_FISICA" if llave_fisica else "PASSKEY", llave_fisica),
             )
