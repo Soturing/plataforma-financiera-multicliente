@@ -123,6 +123,32 @@
       },
       "defaultClientScopes": ["basic", "email", "profile", "roles", "acr"],
       "optionalClientScopes": []
+    },
+    {
+      "clientId": "facturas-control",
+      "name": "Plano de control (cuenta de servicio)",
+      "description": "Sólo administra usuarios del realm: alta, invitación, bloqueo y cierre de sesiones.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${FACTURAS_IDP_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "attributes": { "oauth2.device.authorization.grant.enabled": "false", "oidc.ciba.grant.enabled": "false" },
+      "defaultClientScopes": ["basic", "roles"],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-facturas-control",
+      "enabled": true,
+      "serviceAccountClientId": "facturas-control",
+      "clientRoles": { "realm-management": ["manage-users", "view-users", "query-users", "view-realm"] }
     }
   ],
   "scopeMappings": [

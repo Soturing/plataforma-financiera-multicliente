@@ -16,6 +16,8 @@ from psycopg import Connection
 
 from app.config import Settings, get_settings
 from app.database import get_connection
+from app.seguridad.api import router as seguridad_router
+from app.seguridad.autorizacion import actor_o, autorizar_ruta
 from app.errors import DomainError
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
@@ -142,7 +144,10 @@ app = FastAPI(
     title="Facturación IA API",
     version=__version__,
     description="Backend auditable para la demo de procesamiento de facturas.",
+    # Toda ruta pasa por la autorización del servidor; lo no clasificado se deniega (fase 4).
+    dependencies=[Depends(autorizar_ruta)],
 )
+app.include_router(seguridad_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
@@ -199,7 +204,7 @@ async def upload_invoice(
             mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
             file_path=str(path.resolve()),
             sha256=digest,
-            created_by=creada_por,
+            created_by=actor_o(creada_por),
         )
     except Exception:
         Path(path).unlink(missing_ok=True)
@@ -251,7 +256,7 @@ async def upload_documents(
                 mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
                 file_path=str(path.resolve()),
                 sha256=digest,
-                created_by=creada_por,
+                created_by=actor_o(creada_por),
             )
             created.append(row)
         except DomainError as exc:
@@ -564,7 +569,7 @@ async def create_receipt(
             total=total,
             categoria_id=categoria_id,
             subcategoria_id=subcategoria_id,
-            creado_por=creado_por,
+            creado_por=actor_o(creado_por),
             rol_creador=rol_creador,
             firma_proveedor_nombre=firma_proveedor_nombre,
             firma_proveedor_confirmada=firma_proveedor_confirmada,
@@ -827,7 +832,7 @@ async def import_providers(
             "errores": sum(bool(item["errores"]) for item in preview),
             "detalle": preview,
         }
-    return {"filas": len(preview), **apply_provider_import(conn, preview, importado_por)}
+    return {"filas": len(preview), **apply_provider_import(conn, preview, actor_o(importado_por))}
 
 
 @app.get("/api/v1/analytics/resumen", tags=["analytics"])
@@ -1191,7 +1196,7 @@ async def upload_batch(
             original_path=str(original_path.resolve()),
             original_name=archivo.filename or "lote.pdf",
             original_sha256=digest,
-            created_by=creada_por,
+            created_by=actor_o(creada_por),
             pages=pages,
         )
     except Exception:

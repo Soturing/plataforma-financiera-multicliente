@@ -83,6 +83,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${IDENTIDAD_ADMIN_USER:-instalacion}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTIDAD_ADMIN_PASSWORD:?Define IDENTIDAD_ADMIN_PASSWORD en el archivo .env local}
       FACTURAS_OIDC_CLIENT_SECRET: ${FACTURAS_OIDC_CLIENT_SECRET:?Define FACTURAS_OIDC_CLIENT_SECRET en el archivo .env local}
+      FACTURAS_IDP_ADMIN_CLIENT_SECRET: ${FACTURAS_IDP_ADMIN_CLIENT_SECRET:?Define FACTURAS_IDP_ADMIN_CLIENT_SECRET en el archivo .env local}
       FACTURAS_APP_URL: ${FACTURAS_APP_URL:-http://localhost:8000}
       IDENTIDAD_SMTP_HOST: ${IDENTIDAD_SMTP_HOST:-correo-pruebas}
       IDENTIDAD_SMTP_PORT: ${IDENTIDAD_SMTP_PORT:-1025}
@@ -95,6 +96,29 @@ services:
     depends_on:
       identidad-postgres:
         condition: service_healthy
+
+  # Plano de control: identidades, asignaciones, sesiones y auditoría (fase 2).
+  # Base propia, separada de la de negocio y de la del proveedor de identidad.
+  control-postgres:
+    profiles: ["identidad"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: facturas_control
+      POSTGRES_USER: control_owner
+      POSTGRES_PASSWORD: ${CONTROL_OWNER_PASSWORD:?Define CONTROL_OWNER_PASSWORD en el archivo .env local}
+      CONTROL_APP_PASSWORD: ${CONTROL_APP_PASSWORD:?Define CONTROL_APP_PASSWORD en el archivo .env local}
+    ports:
+      - "127.0.0.1:${CONTROL_POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - control_postgres_data:/var/lib/postgresql/data
+      - ./db/control/000_roles.sh:/docker-entrypoint-initdb.d/000_roles.sh:ro
+      - ./db/control/001_control_plane.sql:/docker-entrypoint-initdb.d/001_control_plane.sql:ro
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U control_owner -d facturas_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # Sólo desarrollo: captura los correos de invitación para leerlos en
   # http://localhost:8025 y desde las pruebas. Nunca envía correo real.
@@ -111,3 +135,4 @@ networks:
 volumes:
   postgres_data:
   identidad_postgres_data:
+  control_postgres_data:
