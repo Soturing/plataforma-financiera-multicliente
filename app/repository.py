@@ -332,6 +332,18 @@ def cancel_batch(conn: Connection, batch_id: UUID, actor: str) -> dict[str, Any]
         raise DomainError("Lote no encontrado.", 404)
     if batch["estado"] == "cancelado":
         return {"lote_id": batch_id, "canceladas": 0, "estado": "cancelado"}
+    # Los trabajos en cola salen de la cola; el que ya se está leyendo se
+    # descarta al terminar porque su factura queda cancelada.
+    conn.execute(
+        """
+        UPDATE core.trabajos_ocr t
+        SET estado = 'cancelado', terminado_en = now(),
+            ultimo_error = 'Lote cancelado por el usuario'
+        FROM core.facturas f
+        WHERE f.id = t.factura_id AND f.lote_id = %s AND t.estado = 'en_cola'
+        """,
+        (batch_id,),
+    )
     rows = conn.execute(
         """
         UPDATE core.facturas

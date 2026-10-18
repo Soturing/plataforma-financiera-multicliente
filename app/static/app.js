@@ -1297,7 +1297,9 @@ async function renderDashboard() {
   populateBranches();
   document.querySelector("#upload-form").onsubmit = submitUpload;
   document.querySelector("#discard-all-duplicates").onclick = discardAllDuplicates;
-  await Promise.all([loadQueue(), loadDuplicates(), loadBatches()]);
+  const [, , , status] = await Promise.all([loadQueue(), loadDuplicates(), loadBatches(), loadOcrStatus()]);
+  scheduleQueueRefresh.wasBusy = Boolean(status?.pendientes);
+  scheduleQueueRefresh(status?.pendientes ? 3000 : 12000);
 }
 
 async function renderArchive() {
@@ -1880,10 +1882,16 @@ function populateBranches() {
   }
 }
 
-async function loadQueue() {
+async function loadQueue(options = {}) {
   const container = document.querySelector("#queue");
   if (!container) return;
-  container.innerHTML = '<div class="empty">Cargando…</div>';
+  // En las actualizaciones automáticas se conserva lo que la persona ya marcó.
+  const keepSelected = options.keepSelection === true
+    ? new Set([...container.querySelectorAll(".queue-select:checked")].map(input => input.value))
+    : new Set();
+  // Solo se muestra "Cargando…" la primera vez; en las actualizaciones
+  // automáticas la lista no debe parpadear.
+  if (!container.children.length) container.innerHTML = '<div class="empty">Cargando…</div>';
   try {
     const query = new URLSearchParams();
     const provider = document.querySelector("#queue-provider")?.value.trim();
@@ -1935,6 +1943,7 @@ async function loadQueue() {
       item.onkeydown = event => { if (event.key === "Enter") item.click(); };
     });
     container.querySelectorAll(".queue-select").forEach(input => {
+      input.checked = keepSelected.has(input.value);
       input.onclick = event => event.stopPropagation();
       input.onchange = updateQueueSelection;
     });
@@ -2096,19 +2105,75 @@ function scheduleBatchRefresh() {
     if (document.querySelector("#batches")) {
       loadBatches();
       loadQueue();
+      loadOcrStatus();
     }
   }, 3000);
 }
 
-function scheduleQueueRefresh(remaining = 80) {
+// Un solo ciclo mientras la bandeja está en pantalla. Consultar el estado de la
+// lectura es barato, así que se hace siempre (también detecta lo que suben otras
+// personas); la lista completa solo se vuelve a pedir mientras haya documentos
+// leyéndose y una vez más cuando terminan.
+function scheduleQueueRefresh(delay = 3000) {
   clearTimeout(loadQueue.timer);
-  if (remaining <= 0) return;
   loadQueue.timer = setTimeout(async () => {
-    if (document.querySelector("#queue")) {
-      await Promise.all([loadQueue(), loadDuplicates()]);
-      scheduleQueueRefresh(remaining - 1);
+    if (!document.querySelector("#queue")) return;
+    const status = await loadOcrStatus();
+    const busy = Boolean(status?.pendientes);
+    if (busy || scheduleQueueRefresh.wasBusy) {
+      await Promise.all([loadQueue({ keepSelection: true }), loadDuplicates()]);
     }
-  }, 3000);
+    scheduleQueueRefresh.wasBusy = busy;
+    scheduleQueueRefresh(busy ? 3000 : 12000);
+  }, delay);
+}
+
+function formatEta(seconds) {
+  if (seconds < 60) return "menos de 1 min";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+}
+
+let ocrNoWorkerSince = null;
+
+async function loadOcrStatus() {
+  const box = document.querySelector("#ocr-status");
+  if (!box) return null;
+  try {
+    const status = await api("/api/v1/cola-ocr");
+    const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+    const waiting = status.en_cola + status.reintentando;
+    let tone = "";
+    let html = "";
+    if (status.pendientes && !status.workers_activos) {
+      ocrNoWorkerSince ??= Date.now();
+      tone = "warning";
+      html = Date.now() - ocrNoWorkerSince < 60000
+        ? `<strong>Iniciando el lector de documentos…</strong><span>${plural(status.pendientes, "documento espera", "documentos esperan")} y empezarán en unos segundos.</span>`
+        : `<strong>No hay un lector de documentos activo</strong><span>${plural(status.pendientes, "documento espera", "documentos esperan")}. Verifique que el servicio de lectura esté en ejecución (<code>python -m app.worker_cli</code>).</span>`;
+    } else if (status.pendientes) {
+      ocrNoWorkerSince = null;
+      const parts = [
+        `${status.procesando} en lectura`,
+        `${waiting} en espera${status.reintentando ? ` (${status.reintentando} reintentando)` : ""}`,
+      ];
+      if (status.eta_segundos) parts.push(`termina en ≈ ${formatEta(status.eta_segundos)}`);
+      html = `<i class="pulse" aria-hidden="true"></i><strong>Leyendo documentos</strong><span>${parts.join(" · ")}</span>`;
+    } else if (status.fallidos_24h) {
+      ocrNoWorkerSince = null;
+      tone = "error";
+      html = `<strong>${plural(status.fallidos_24h, "documento no pudo leerse", "documentos no pudieron leerse")} en las últimas 24 h</strong><span>Revise los lotes para reintentarlos o elimínelos.</span>`;
+    } else {
+      ocrNoWorkerSince = null;
+    }
+    box.className = `ocr-status ${tone}${html ? "" : " hidden"}`;
+    box.innerHTML = html;
+    return status;
+  } catch (error) {
+    return null;
+  }
 }
 
 async function loadDuplicates() {
@@ -2184,7 +2249,8 @@ async function submitUpload(event) {
       bulk.set("sucursal_clave", form.get("sucursal_clave"));
       bulk.set("creada_por", operator());
       const result = await api("/api/v1/documentos/carga-masiva", { method: "POST", body: bulk });
-      notify(`${result.creados.length} documentos cargados y procesándose${result.duplicados.length ? ` · ${result.duplicados.length} duplicados omitidos` : ""}`);
+      notify(`${result.creados.length} documentos cargados y en cola de lectura${result.duplicados.length ? ` · ${result.duplicados.length} duplicados omitidos` : ""}${result.errores.length ? ` · ${result.errores.length} con error` : ""}`, result.errores.length > 0 && !result.creados.length);
+      loadOcrStatus();
       event.target.reset();
       document.querySelector("#upload-panel").classList.add("hidden");
       document.body.classList.remove("modal-open");
@@ -2216,7 +2282,8 @@ async function submitUpload(event) {
     const created = await api("/api/v1/facturas", { method: "POST", body: form });
     await api(`/api/v1/facturas/${created.id}/procesar-ocr`, { method: "POST" });
     const isXml = selectedFile?.name?.toLowerCase().endsWith(".xml");
-    notify(isXml ? "XML fiscal cargado; lectura estructurada iniciada" : selectedFile?.type === "application/pdf" ? "Documento cargado; lectura de texto iniciada" : "Documento cargado; OCR local iniciado");
+    notify(isXml ? "XML fiscal cargado; en cola de lectura" : "Documento cargado; en cola de lectura");
+    loadOcrStatus();
     document.querySelector("#upload-panel").classList.add("hidden");
     document.body.classList.remove("modal-open");
     scheduleQueueRefresh();

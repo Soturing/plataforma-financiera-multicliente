@@ -107,7 +107,16 @@ from app.receipts import (
 from app.pdf_splitter import pdf_page_count, split_pdf
 from uuid import uuid4
 import shutil
-from app.jobs import is_batch_active, start_batch_job, start_invoice_job
+from app.jobs import ensure_workers_running
+from app.ocr_queue import (
+    PRIORITY_BATCH,
+    PRIORITY_BULK,
+    PRIORITY_INTERACTIVE,
+    enqueue_batch,
+    enqueue_invoices,
+    is_batch_active,
+    queue_status,
+)
 from app.classification import reclassify_batch
 from app.provider_template import build_provider_template
 from app.fixed_expenses import list_fixed_expenses, save_fixed_expense
@@ -241,23 +250,37 @@ async def upload_documents(
                 sha256=digest,
                 created_by=creada_por,
             )
-            created.append({**row, "archivo_url": str(path.resolve())})
+            created.append(row)
         except DomainError as exc:
             if path:
                 Path(path).unlink(missing_ok=True)
             target = duplicates if exc.status_code == 409 else errors
             target.append({"archivo": archivo.filename, "detalle": exc.message})
 
+    enqueued = enqueue_invoices(conn, [item["id"] for item in created], priority=PRIORITY_BULK)
     conn.commit()
-    for item in created:
-        start_invoice_job(item["id"], item.pop("archivo_url"))
+    if enqueued:
+        ensure_workers_running()
 
     return {
         "creados": created,
         "duplicados": duplicates,
         "errores": errors,
-        "procesamiento_iniciado": len(created),
+        "procesamiento_iniciado": enqueued,
     }
+
+
+@app.get("/api/v1/cola-ocr", tags=["procesamiento"])
+def ocr_queue_status(conn: Connection = Depends(get_connection)):
+    """Estado de la cola de lectura: pendientes, ritmo, tiempo estimado y workers vivos."""
+    status = queue_status(conn)
+    conn.commit()
+    # Si hay trabajo esperando y nadie lee (por ejemplo tras reiniciar el equipo),
+    # se levanta el lector sin que el usuario tenga que hacer nada.
+    status["iniciando_workers"] = bool(
+        status["pendientes"] and not status["workers_activos"] and ensure_workers_running()
+    )
+    return status
 
 
 @app.get("/api/v1/duplicados", tags=["facturas"])
@@ -342,8 +365,10 @@ def process_real_ocr(factura_id: UUID, conn: Connection = Depends(get_connection
         raise DomainError("Factura no encontrada.", 404)
     if row["estado"] not in {"recibida", "error"}:
         raise DomainError(f"La factura no puede procesarse desde {row['estado']}.", 409)
-    started = start_invoice_job(factura_id, row["archivo_url"])
-    return {"factura_id": factura_id, "estado": "procesando", "iniciado": started}
+    enqueued = enqueue_invoices(conn, [factura_id], priority=PRIORITY_INTERACTIVE)
+    conn.commit()
+    ensure_workers_running()
+    return {"factura_id": factura_id, "estado": "en_cola", "iniciado": bool(enqueued)}
 
 
 @app.get("/api/v1/revision/resumen", tags=["revision"])
@@ -1184,11 +1209,15 @@ def process_batch(lote_id: UUID, conn: Connection = Depends(get_connection)):
         raise DomainError("Lote no encontrado.", 404)
     if batch["estado"] == "cancelado":
         raise DomainError("El lote fue cancelado y no puede procesarse.", 409)
-    started = start_batch_job(lote_id)
+    enqueued = enqueue_batch(conn, lote_id, priority=PRIORITY_BATCH)
+    conn.commit()
+    if enqueued:
+        ensure_workers_running()
     return {
         "lote_id": lote_id,
-        "estado": "procesando" if started or is_batch_active(lote_id) else "pendiente",
-        "iniciado": started,
+        "estado": "procesando" if enqueued or is_batch_active(conn, lote_id) else "pendiente",
+        "iniciado": bool(enqueued),
+        "encoladas": enqueued,
     }
 
 
@@ -1254,7 +1283,7 @@ def reprocess_pending_batch(lote_id: UUID, conn: Connection = Depends(get_connec
         raise DomainError("Lote no encontrado.", 404)
     if batch["estado"] == "cancelado":
         raise DomainError("El lote fue cancelado y no puede reprocesarse.", 409)
-    if is_batch_active(lote_id):
+    if is_batch_active(conn, lote_id):
         raise DomainError("El lote ya se está procesando.", 409)
     rows = conn.execute(
         """
@@ -1266,12 +1295,14 @@ def reprocess_pending_batch(lote_id: UUID, conn: Connection = Depends(get_connec
         """,
         (lote_id,),
     ).fetchall()
+    enqueued = enqueue_batch(conn, lote_id, priority=PRIORITY_BATCH) if rows else 0
     conn.commit()
-    started = bool(rows) and start_batch_job(lote_id)
+    if enqueued:
+        ensure_workers_running()
     return {
         "lote_id": lote_id,
         "facturas_reiniciadas": len(rows),
-        "estado": "procesando" if started else "sin_pendientes",
+        "estado": "procesando" if enqueued else "sin_pendientes",
     }
 
 

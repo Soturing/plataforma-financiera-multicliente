@@ -141,7 +141,13 @@ Devuelve totales por estado: recibidas, procesando, en revisión, aprobadas, rec
 
 `POST /api/v1/lotes/{id}/procesar`
 
-Inicia un worker independiente y responde inmediatamente. Un bloqueo asesor de PostgreSQL impide que dos workers procesen simultáneamente el mismo lote.
+Encola las páginas pendientes (`recibida`, `error`) y responde inmediatamente con `encoladas`. Los workers de la cola las leen en orden; pedirlo otra vez no duplica trabajos. Ver [cola-ocr.md](cola-ocr.md).
+
+### Estado de la cola de lectura
+
+`GET /api/v1/cola-ocr`
+
+Devuelve documentos en cola, leyéndose y reintentando, fallidos en 24 h, segundos por documento, tiempo estimado y workers activos.
 
 ### Reclasificar desde OCR guardado
 

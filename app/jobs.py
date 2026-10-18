@@ -1,113 +1,59 @@
 import subprocess
 import sys
-from uuid import UUID
+import time
+from pathlib import Path
 
 import psycopg
-from psycopg.rows import dict_row
 
-from app.config import get_settings
-from app.ocr_processing import claim_batch_invoices, persist_ocr_result
-from app.text_processing import get_text_engine
+from app.config import Settings, get_settings
+from app.ocr_queue import WORKER_ALIVE_SECONDS
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-def _process_invoice(invoice_id: UUID, file_path: str) -> None:
-    settings = get_settings()
-    try:
-        with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-            started = conn.execute(
-                """
-                UPDATE core.facturas SET estado = 'ocr_procesando', actualizada_en = now()
-                WHERE id = %s AND estado IN ('recibida', 'error') RETURNING id
-                """,
-                (invoice_id,),
-            ).fetchone()
-            if not started:
-                return
-        result = get_text_engine().read(file_path)
-        with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-            persist_ocr_result(conn, invoice_id, result)
-    except Exception as exc:
-        with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-            conn.execute(
-                """
-                UPDATE core.facturas SET estado = 'error', error_codigo = 'OCR_ERROR',
-                    error_detalle = %s, actualizada_en = now() WHERE id = %s
-                """,
-                (str(exc)[:2000], invoice_id),
-            )
+# Evita lanzar un supervisor por cada petición mientras el anterior arranca.
+_SPAWN_COOLDOWN_SECONDS = 30
+_last_spawn = float("-inf")
 
 
-def _process_batch(batch_id: UUID) -> None:
-    settings = get_settings()
-    try:
-        with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-            invoices = claim_batch_invoices(conn, batch_id)
-        engine = get_text_engine()
-        for invoice in invoices:
-            try:
-                with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-                    started = conn.execute(
-                        """
-                        UPDATE core.facturas f
-                        SET estado = 'ocr_procesando', actualizada_en = now()
-                        FROM core.lotes_carga l
-                        WHERE f.id = %s AND f.lote_id = l.id
-                          AND l.estado <> 'cancelado'
-                          AND f.estado IN ('recibida', 'error', 'ocr_procesando')
-                        RETURNING f.id
-                        """,
-                        (invoice["id"],),
-                    ).fetchone()
-                    if not started:
-                        continue
-                result = engine.read(invoice["archivo_url"])
-                with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-                    persist_ocr_result(conn, invoice["id"], result)
-            except Exception as exc:
-                with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-                    conn.execute(
-                        """
-                        UPDATE core.facturas SET estado = 'error', error_codigo = 'OCR_ERROR',
-                            error_detalle = %s, actualizada_en = now() WHERE id = %s
-                        """,
-                        (str(exc)[:2000], invoice["id"]),
-                    )
-    finally:
-        pass
-
-
-def start_batch_job(batch_id: UUID) -> bool:
-    flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    subprocess.Popen(
-        [sys.executable, "-m", "app.worker_cli", "--batch", str(batch_id)],
-        cwd=str(get_settings().upload_dir.resolve().parents[1]),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=flags,
-    )
-    return True
-
-
-def is_batch_active(batch_id: UUID) -> bool:
-    settings = get_settings()
+def workers_alive(settings: Settings | None = None) -> bool:
+    settings = settings or get_settings()
     with psycopg.connect(settings.database_url) as conn:
         return bool(
             conn.execute(
-                "SELECT 1 FROM core.facturas WHERE lote_id = %s AND estado = 'ocr_procesando' LIMIT 1",
-                (batch_id,),
+                """
+                SELECT 1 FROM core.workers_ocr
+                WHERE ultimo_latido > now() - make_interval(secs => %s)
+                LIMIT 1
+                """,
+                (WORKER_ALIVE_SECONDS,),
             ).fetchone()
         )
 
 
-def start_invoice_job(invoice_id: UUID, file_path: str) -> bool:
+def ensure_workers_running(settings: Settings | None = None) -> bool:
+    """Lanza el supervisor de workers si nadie está leyendo la cola.
+
+    Es seguro llamarlo en cada encolado: el supervisor toma un candado en la base
+    de datos, así que un segundo intento termina de inmediato. Devuelve True si
+    lanzó un proceso."""
+    global _last_spawn
+    settings = settings or get_settings()
+    if not settings.ocr_autostart_workers:
+        return False
+    if time.monotonic() - _last_spawn < _SPAWN_COOLDOWN_SECONDS or workers_alive(settings):
+        return False
+    _last_spawn = time.monotonic()
+
+    log_dir = PROJECT_ROOT / "tmp"
+    log_dir.mkdir(exist_ok=True)
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    subprocess.Popen(
-        [sys.executable, "-m", "app.worker_cli", "--invoice", str(invoice_id)],
-        cwd=str(get_settings().upload_dir.resolve().parents[1]),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=flags,
-    )
+    with (log_dir / "ocr-worker.log").open("ab") as log_file:
+        subprocess.Popen(
+            [sys.executable, "-m", "app.worker_cli"],
+            cwd=str(PROJECT_ROOT),
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=log_file,
+            creationflags=flags,
+        )
     return True
