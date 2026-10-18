@@ -2,7 +2,7 @@
 
 Plataforma financiera para restaurantes: carga de facturas → OCR → interpretación → revisión humana → factura final → analytics/Excel/PDF. Ya se ha operado en producción: **decisiones simples y salidas rápidas**. No sobre-ingenierizar.
 
-Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-017) y `docs/roadmap-producto.md`. Este archivo es solo un resumen operativo; si algo contradice a esos documentos, mandan ellos.
+Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-021) y `docs/roadmap-producto.md`. Este archivo es solo un resumen operativo; si algo contradice a esos documentos, mandan ellos.
 
 ## Stack
 - Python + FastAPI (`app/main.py`), PostgreSQL 15+ (docker `compose.yaml`), front estático sin build (`app/static/`: `index.html`, `app.js`, `styles.css`).
@@ -38,7 +38,7 @@ docker compose up -d
 ## Seguridad y datos
 - **Nunca versionar datos, entregables ni documentos reales de clientes** (`docs/seguridad/politica-repositorio.md`, hook `.githooks/pre-commit`, `scripts/check_repo_safety.ps1`). Usar solo datos sintéticos.
 - No imprimir ni commitear secretos; `.env` está fuera de git.
-- Usuarios, roles, bloqueo por pago, multi-tenant: **diseñados, no implementados** (roadmap + `docs/seguridad/`). Ya no es una demo de salida rápida: se construye como producto real, así que el aislamiento fuerte por cliente (D-016) y las medidas de seguridad **sí se implementan**. Esa arquitectura conviene trabajarla en una sesión con Opus.
+- Usuarios, roles y multi-tenant: **en construcción** según `docs/seguridad/plan-implementacion.md` (D-018 a D-021: desde cero, VPS propio con Docker, Keycloak como IdP). `codex/security-foundation` es legado y no se reutiliza. Bloqueo por pago: diseñado, no implementado. Ya no es una demo de salida rápida: el aislamiento fuerte por cliente (D-016) y las medidas de seguridad **sí se implementan**. Esa arquitectura conviene trabajarla en una sesión con Opus.
 - El historial "rápido" del proyecto anterior no justifica atajos nuevos en seguridad.
 
 ## Entorno local (este worktree)

@@ -17,6 +17,10 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 8. [Arquitectura de aislamiento multi-tenant](arquitectura-aislamiento.md)
 9. [Política de repositorio y control de versiones](politica-repositorio.md)
 
+## Construcción
+
+- [Plan de implementación](plan-implementacion.md) — aprobado; fase 1 en curso (D-018 a D-021).
+
 ## Regla de implementación
 
 La construcción debe mantener estas decisiones como criterios verificables. Si durante el desarrollo se necesita modificar una decisión, el cambio se documenta antes de alterar el comportamiento correspondiente.

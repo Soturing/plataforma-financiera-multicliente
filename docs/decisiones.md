@@ -147,3 +147,47 @@ Cada categoría declara su `tipo_costo` (fijo o variable) y si admite facturas. 
 Lista de gastos fijos con alta previa: implementada (migración 025, `catalog.gastos_fijos`). Comisiones con proyección y cierre real mensual: implementadas (migración 026). Nómina con captura manual semanal por sucursal: implementada (migración 027). Detalle en `docs/categorias-gastos.md`.
 
 Cambio de contrato: las vistas `analytics.*` ya no exponen la columna `centro_costo` y `analytics.movimientos_gasto` añade `categoria_clave` y `tipo_costo`. Los libros de Excel que consuman esas vistas deben actualizarse.
+
+## D-018 — Usuarios y seguridad se construyen desde cero sobre esta línea
+
+Estado: adoptada (2026-10-18).
+
+La rama `codex/security-foundation` se considera código legado y no se reutiliza ni se porta. El sistema de usuarios, permisos, aislamiento y auditoría se construye sobre la línea de desarrollo hacia el MVP, con migraciones a partir de la 032, y se verifica contra los documentos de `docs/seguridad/`.
+
+Primera entrega: multi-tenant completo desde el inicio (plano de control, data plane por cliente, RLS, sesiones, roles y auditoría), no una versión de un solo cliente que luego se migre.
+
+## D-019 — Despliegue en servidor propio con Docker
+
+Estado: adoptada (2026-10-18).
+
+El primer cliente se despliega en un servidor o VPS propio con Docker. D-016 se materializa así:
+
+- plano de control: servicio propio, PostgreSQL de control y proveedor de identidad, en una red Docker separada;
+- data plane por cliente: contenedores propios de backend y workers OCR, PostgreSQL propio, volumen de archivos propio y red Docker propia sin ruta hacia otros clientes;
+- un proxy inverso con TLS es el único punto expuesto a internet.
+
+No existe un KMS gestionado, por lo que el gestor de secretos y las claves de cifrado por cliente se resuelven en la fase correspondiente del plan (`docs/seguridad/plan-implementacion.md`).
+
+## D-020 — Excepción temporal: una persona con los dos roles globales
+
+Estado: adoptada como excepción temporal (2026-10-18).
+
+Al inicio, una misma persona ocupará Director y Administrador de seguridad. Esto contradice la separación de funciones del catálogo de roles, por lo que se acepta solo como excepción temporal con estas compensaciones:
+
+- una sola identidad con dos asignaciones explícitas; cada sesión opera con **un solo rol activo**, elegido al entrar, y cambiar de rol exige reautenticación;
+- la auditoría registra siempre el rol efectivo; nunca se suman los permisos de ambos roles en una sesión;
+- se mantienen las dos llaves físicas FIDO2 exigidas para cuentas privilegiadas;
+- el resumen semanal de auditoría se copia fuera del servidor, porque no hay una segunda persona que lo revise;
+- el sistema no se diseña alrededor de la excepción: al darla de baja basta con retirar una asignación.
+
+La excepción termina al incorporar a una segunda persona con rol global o antes de incorporar al segundo cliente, lo que ocurra primero.
+
+## D-021 — Keycloak como proveedor de identidad
+
+Estado: adoptada (2026-10-18); sujeta a la prueba técnica de la fase 1.
+
+Se autoaloja Keycloak con su propio PostgreSQL dentro del plano de control (D-019). Se elige porque permite, sin código propio, exigir llaves físicas con atestación a los roles globales y passkeys del dispositivo a los roles operativos, sin contraseña de respaldo.
+
+Keycloak sólo demuestra la identidad. Sesiones, membresías, roles, alcance y auditoría pertenecen al plano de control de la aplicación, que recibe la identidad mediante OIDC con código y PKCE del lado del servidor.
+
+Si la prueba técnica de la fase 1 no confirma alguno de sus puntos, la decisión se revisa antes de iniciar la fase 2. Comparación y criterios en `docs/seguridad/plan-implementacion.md`.
