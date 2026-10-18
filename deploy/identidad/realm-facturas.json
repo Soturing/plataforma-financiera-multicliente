@@ -1,0 +1,245 @@
+{
+  "realm": "facturas",
+  "displayName": "Facturación IA",
+  "enabled": true,
+  "sslRequired": "external",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["es"],
+  "defaultLocale": "es",
+
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "userManagedAccessAllowed": false,
+  "organizationsEnabled": false,
+
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "maxDeltaTimeSeconds": 600,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+
+  "ssoSessionIdleTimeout": 300,
+  "ssoSessionMaxLifespan": 28800,
+  "accessTokenLifespan": 300,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanLogin": 600,
+  "accessCodeLifespanUserAction": 300,
+  "actionTokenGeneratedByAdminLifespan": 86400,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 1,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+
+  "smtpServer": {
+    "host": "${IDENTIDAD_SMTP_HOST}",
+    "port": "${IDENTIDAD_SMTP_PORT}",
+    "from": "${IDENTIDAD_SMTP_FROM}",
+    "fromDisplayName": "Facturación IA",
+    "auth": "false",
+    "ssl": "false",
+    "starttls": "false"
+  },
+
+  "eventsEnabled": true,
+  "eventsExpiration": 7776000,
+  "eventsListeners": ["jboss-logging"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+
+  "webAuthnPolicyRpEntityName": "Facturación IA",
+  "webAuthnPolicySignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicyRpId": "",
+  "webAuthnPolicyAttestationConveyancePreference": "direct",
+  "webAuthnPolicyAuthenticatorAttachment": "cross-platform",
+  "webAuthnPolicyResidentKey": "Discouraged",
+  "webAuthnPolicyUserVerificationRequirement": "required",
+  "webAuthnPolicyCreateTimeout": 0,
+  "webAuthnPolicyAvoidSameAuthenticatorRegister": true,
+  "webAuthnPolicyAcceptableAaguids": [],
+  "webAuthnPolicyExtraOrigins": [],
+
+  "webAuthnPolicyPasswordlessRpEntityName": "Facturación IA",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicyPasswordlessRpId": "",
+  "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
+  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
+  "webAuthnPolicyPasswordlessResidentKey": "Required",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+  "webAuthnPolicyPasswordlessCreateTimeout": 0,
+  "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": true,
+  "webAuthnPolicyPasswordlessAcceptableAaguids": [],
+  "webAuthnPolicyPasswordlessExtraOrigins": [],
+
+  "roles": {
+    "realm": [
+      {
+        "name": "default-roles-facturas",
+        "description": "Rol por defecto vacío: sin consola de cuenta ni acceso sin conexión.",
+        "composite": false
+      },
+      {
+        "name": "requiere-llave-fisica",
+        "description": "Lo asigna el plano de control a quien tenga un rol global (Director, Administrador de seguridad). Exige llave física FIDO2."
+      }
+    ]
+  },
+  "defaultRole": { "name": "default-roles-facturas" },
+
+  "clients": [
+    {
+      "clientId": "facturas-app",
+      "name": "Facturación IA",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${FACTURAS_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": false,
+      "fullScopeAllowed": false,
+      "frontchannelLogout": false,
+      "redirectUris": ["${FACTURAS_APP_URL}/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${FACTURAS_APP_URL}/auth/salida",
+        "use.refresh.tokens": "false",
+        "client_credentials.use_refresh_token": "false",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false",
+        "require.pushed.authorization.requests": "false"
+      },
+      "defaultClientScopes": ["basic", "email", "profile", "roles", "acr"],
+      "optionalClientScopes": []
+    }
+  ],
+  "scopeMappings": [
+    { "client": "facturas-app", "roles": ["requiere-llave-fisica"] }
+  ],
+
+  "browserFlow": "navegador-sin-contrasena",
+  "directGrantFlow": "denegar",
+  "resetCredentialsFlow": "denegar",
+  "authenticationFlows": [
+    {
+      "alias": "navegador-sin-contrasena",
+      "description": "Identificador primero; llave física para roles globales, passkey o código de recuperación para el resto. Nunca contraseña.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-cookie", "requirement": "ALTERNATIVE", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "flowAlias": "formularios", "requirement": "ALTERNATIVE", "priority": 20, "authenticatorFlow": true, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "formularios",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-username-form", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "flowAlias": "rol-global", "requirement": "CONDITIONAL", "priority": 20, "authenticatorFlow": true, "userSetupAllowed": false },
+        { "flowAlias": "rol-operativo", "requirement": "CONDITIONAL", "priority": 30, "authenticatorFlow": true, "userSetupAllowed": false },
+        { "flowAlias": "sin-credencial-fuerte", "requirement": "CONDITIONAL", "priority": 40, "authenticatorFlow": true, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "rol-global",
+      "description": "Sólo llave física FIDO2 con atestación (política WebAuthn).",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "es-rol-global", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "flowAlias": "llave-fisica-registrada", "requirement": "CONDITIONAL", "priority": 20, "authenticatorFlow": true, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "llave-fisica-registrada",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-configured", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "authenticator": "webauthn-authenticator", "requirement": "REQUIRED", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "rol-operativo",
+      "description": "Passkey del dispositivo o código de recuperación (política WebAuthn sin contraseña).",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "no-es-rol-global", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "flowAlias": "passkey-o-codigo", "requirement": "REQUIRED", "priority": 20, "authenticatorFlow": true, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "passkey-o-codigo",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "webauthn-authenticator-passwordless", "requirement": "ALTERNATIVE", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "authenticator": "auth-recovery-authn-code-form", "requirement": "ALTERNATIVE", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "sin-credencial-fuerte",
+      "description": "Cierre de seguridad: si no se usó ninguna credencial fuerte, se deniega. Impide entrar o registrar autenticadores sólo con el correo.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-credential", "authenticatorConfig": "no-uso-credencial-fuerte", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "authenticator": "deny-access-authenticator", "requirement": "REQUIRED", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "denegar",
+      "description": "Flujo vacío para concesión directa y restablecimiento de credenciales: siempre deniega.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "deny-access-authenticator", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    { "alias": "es-rol-global", "config": { "condUserRole": "requiere-llave-fisica", "negate": "false" } },
+    { "alias": "no-es-rol-global", "config": { "condUserRole": "requiere-llave-fisica", "negate": "true" } },
+    { "alias": "no-uso-credencial-fuerte", "config": { "credentials": "webauthn##webauthn-passwordless##recovery-authn-codes", "included": "false" } }
+  ],
+
+  "requiredActions": [
+    { "alias": "webauthn-register", "name": "Registrar llave física", "providerId": "webauthn-register", "enabled": true, "defaultAction": false, "priority": 10, "config": {} },
+    { "alias": "webauthn-register-passwordless", "name": "Registrar passkey", "providerId": "webauthn-register-passwordless", "enabled": true, "defaultAction": false, "priority": 20, "config": {} },
+    { "alias": "CONFIGURE_RECOVERY_AUTHN_CODES", "name": "Generar códigos de recuperación", "providerId": "CONFIGURE_RECOVERY_AUTHN_CODES", "enabled": true, "defaultAction": false, "priority": 30, "config": {} },
+    { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": false, "defaultAction": false, "priority": 40, "config": {} },
+    { "alias": "UPDATE_PASSWORD", "name": "Update Password", "providerId": "UPDATE_PASSWORD", "enabled": false, "defaultAction": false, "priority": 50, "config": {} },
+    { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 60, "config": {} },
+    { "alias": "UPDATE_PROFILE", "name": "Update Profile", "providerId": "UPDATE_PROFILE", "enabled": false, "defaultAction": false, "priority": 70, "config": {} },
+    { "alias": "VERIFY_EMAIL", "name": "Verify Email", "providerId": "VERIFY_EMAIL", "enabled": false, "defaultAction": false, "priority": 80, "config": {} },
+    { "alias": "VERIFY_PROFILE", "name": "Verify Profile", "providerId": "VERIFY_PROFILE", "enabled": false, "defaultAction": false, "priority": 90, "config": {} },
+    { "alias": "UPDATE_EMAIL", "name": "Update Email", "providerId": "UPDATE_EMAIL", "enabled": false, "defaultAction": false, "priority": 100, "config": {} },
+    { "alias": "delete_account", "name": "Delete Account", "providerId": "delete_account", "enabled": false, "defaultAction": false, "priority": 110, "config": {} },
+    { "alias": "delete_credential", "name": "Delete Credential", "providerId": "delete_credential", "enabled": false, "defaultAction": false, "priority": 120, "config": {} },
+    { "alias": "idp_link", "name": "Linking Identity Provider", "providerId": "idp_link", "enabled": false, "defaultAction": false, "priority": 130, "config": {} },
+    { "alias": "update_user_locale", "name": "Update User Locale", "providerId": "update_user_locale", "enabled": true, "defaultAction": false, "priority": 140, "config": {} }
+  ]
+}

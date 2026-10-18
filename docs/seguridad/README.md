@@ -19,7 +19,8 @@ Esta carpeta conserva las ocho definiciones aprobadas antes de iniciar la constr
 
 ## Construcción
 
-- [Plan de implementación](plan-implementacion.md) — aprobado; fase 1 en curso (D-018 a D-021).
+- [Plan de implementación](plan-implementacion.md) — aprobado (D-018 a D-021).
+- [Fase 1 — Proveedor de identidad](fase1-identidad.md) — prueba técnica completada en local.
 
 ## Regla de implementación
 

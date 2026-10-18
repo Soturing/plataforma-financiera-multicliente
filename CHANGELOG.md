@@ -3,6 +3,15 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y versionado
 [MAYOR.MENOR.PARCHE](docs/versionado.md). La versión vigente está en el archivo `VERSION`.
 
+## [Sin publicar]
+
+### Agregado
+
+- **Proveedor de identidad (fase 1, D-021):** Keycloak autoalojado en el perfil `identidad` de `compose.yaml`
+  con realm versionado sin contraseñas: llave física FIDO2 para roles globales, passkey o código de recuperación
+  para el resto y alta sólo por invitación. Prueba técnica automatizada en `tests/identidad/`; resultados y
+  bloqueos de producción en `docs/seguridad/fase1-identidad.md`. Todavía no está conectado a la aplicación.
+
 ## [0.1.0] - 2026-10-18
 
 Primera versión numerada de la línea de desarrollo hacia el MVP, sobre la base saneada.

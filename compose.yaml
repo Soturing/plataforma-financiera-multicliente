@@ -47,5 +47,67 @@ services:
       timeout: 5s
       retries: 10
 
+  # Plano de control: proveedor de identidad (D-021). Se levanta con
+  # `docker compose --profile identidad up -d`. Red propia, sin ruta hacia la
+  # base de negocio; sólo el puerto HTTP local queda expuesto en 127.0.0.1.
+  identidad-postgres:
+    profiles: ["identidad"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${IDENTIDAD_DB_PASSWORD:?Define IDENTIDAD_DB_PASSWORD en el archivo .env local}
+    volumes:
+      - identidad_postgres_data:/var/lib/postgresql/data
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  identidad:
+    profiles: ["identidad"]
+    image: quay.io/keycloak/keycloak:26.7.5
+    # start-dev sólo para el entorno local: HTTP en localhost (contexto seguro
+    # para WebAuthn). Producción usa `start` con TLS detrás del proxy inverso.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://identidad-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${IDENTIDAD_DB_PASSWORD}
+      KC_HOSTNAME: http://localhost:${IDENTIDAD_PORT:-8180}
+      KC_HTTP_PORT: "8080"
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${IDENTIDAD_ADMIN_USER:-instalacion}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTIDAD_ADMIN_PASSWORD:?Define IDENTIDAD_ADMIN_PASSWORD en el archivo .env local}
+      FACTURAS_OIDC_CLIENT_SECRET: ${FACTURAS_OIDC_CLIENT_SECRET:?Define FACTURAS_OIDC_CLIENT_SECRET en el archivo .env local}
+      FACTURAS_APP_URL: ${FACTURAS_APP_URL:-http://localhost:8000}
+      IDENTIDAD_SMTP_HOST: ${IDENTIDAD_SMTP_HOST:-correo-pruebas}
+      IDENTIDAD_SMTP_PORT: ${IDENTIDAD_SMTP_PORT:-1025}
+      IDENTIDAD_SMTP_FROM: ${IDENTIDAD_SMTP_FROM:-accesos@facturas.localhost}
+    volumes:
+      - ./deploy/identidad/realm-facturas.json:/opt/keycloak/data/import/realm-facturas.json:ro
+    ports:
+      - "127.0.0.1:${IDENTIDAD_PORT:-8180}:8080"
+    networks: [control]
+    depends_on:
+      identidad-postgres:
+        condition: service_healthy
+
+  # Sólo desarrollo: captura los correos de invitación para leerlos en
+  # http://localhost:8025 y desde las pruebas. Nunca envía correo real.
+  correo-pruebas:
+    profiles: ["identidad"]
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:${CORREO_PRUEBAS_PORT:-8025}:8025"
+    networks: [control]
+
+networks:
+  control:
+
 volumes:
   postgres_data:
+  identidad_postgres_data:

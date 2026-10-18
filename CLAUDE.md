@@ -18,6 +18,7 @@ Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-021) y
 ```powershell
 py -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 docker compose up -d
+docker compose --profile identidad up -d identidad correo-pruebas   # Keycloak :8180 y Mailpit :8025 (tests/identidad)
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload   # http://127.0.0.1:8000
 .\.venv\Scripts\python.exe -m pytest -q
 ```

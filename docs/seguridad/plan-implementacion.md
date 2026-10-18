@@ -1,6 +1,6 @@
 # Plan de implementación: usuarios, acceso y aislamiento
 
-Estado: aprobado (2026-10-18). Fase 1 en curso.
+Estado: aprobado (2026-10-18). Fase 1: prueba técnica completada; resultados en [fase1-identidad.md](fase1-identidad.md).
 
 Base: D-016, D-018, D-019, D-020, D-021 y los documentos de esta carpeta. Cada fase termina con pruebas automáticas y sólo se da por cerrada cuando sus criterios de salida pasan.
 
@@ -40,7 +40,7 @@ Data plane del cliente   → vuelve a verificar el contexto firmado y aplica RLS
 
 - Keycloak con su propio PostgreSQL en `compose`, realm versionado sin secretos.
 - Flujos de acceso: passkey para roles operativos; llave física con atestación para roles globales; sin contraseña de respaldo.
-- Salida: los cinco puntos de la prueba técnica de §1 verificados y documentados.
+- Salida: los cinco puntos de la prueba técnica de §1 verificados y documentados. **Cumplida en local** (ver [fase1-identidad.md](fase1-identidad.md)); queda la verificación manual con una llave física real.
 
 ### Fase 2 — Plano de control
 
@@ -89,6 +89,7 @@ Data plane del cliente   → vuelve a verificar el contexto firmado y aplica RLS
 
 ## 4. Pendientes de decidir
 
+- Modelo de llave física para los roles globales (fija los AAGUID y las raíces de atestación del truststore).
 - Gestor de secretos y claves por cliente.
 - Canal para invitaciones y notificaciones (correo transaccional u otro).
 - Dominio y certificados TLS del servidor.
