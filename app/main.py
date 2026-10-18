@@ -75,6 +75,7 @@ from app.schemas import (
     SubcategoriaCatalogoRequest,
     GastoFijoRequest,
     EntidadPropiaRequest,
+    SepararContinuacionRequest,
     ComisionParametroRequest,
     ComisionCierreRequest,
     NominaRequest,
@@ -107,6 +108,7 @@ from app.receipts import (
 from app.pdf_splitter import pdf_page_count, split_pdf
 from uuid import uuid4
 import shutil
+from app.version import __version__
 from app.jobs import ensure_workers_running
 from app.ocr_queue import (
     PRIORITY_BATCH,
@@ -121,6 +123,7 @@ from app.classification import reclassify_batch
 from app.provider_template import build_provider_template
 from app.fixed_expenses import list_fixed_expenses, save_fixed_expense
 from app.own_entities import list_own_entities, save_own_entity
+from app.page_groups import separate_continuation
 from app.commissions import (
     delete_parameter, list_parameters, monthly_summary, save_closing, save_parameter,
 )
@@ -137,7 +140,7 @@ from app.provider_catalog import (
 
 app = FastAPI(
     title="Facturación IA API",
-    version="0.1.0",
+    version=__version__,
     description="Backend auditable para la demo de procesamiento de facturas.",
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -168,7 +171,7 @@ def user_interface():
 @app.get("/health", response_model=HealthResponse, tags=["sistema"])
 def health(conn: Connection = Depends(get_connection)):
     conn.execute("SELECT 1").fetchone()
-    return {"status": "ok", "database": "ok"}
+    return {"status": "ok", "database": "ok", "version": __version__}
 
 
 @app.post("/api/v1/facturas", response_model=FacturaCreada, status_code=201, tags=["facturas"])
@@ -440,6 +443,11 @@ def delete_invoices(
             except OSError:
                 pass
     return {**result, "archivos_eliminados": removed_files}
+
+
+@app.post("/api/v1/continuaciones/{vinculo_id}/separar", tags=["facturas"])
+def separate_page(vinculo_id: UUID, data: SepararContinuacionRequest, conn: Connection = Depends(get_connection)):
+    return separate_continuation(conn, vinculo_id, data.separado_por)
 
 
 @app.get("/api/v1/facturas/{factura_id}/expediente", tags=["facturas"])

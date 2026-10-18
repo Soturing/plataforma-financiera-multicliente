@@ -116,6 +116,8 @@ class FacturaRevision(BaseModel):
     subcategoria: str | None = None
     confianza: Decimal | None = None
     validaciones_fallidas: int = 0
+    paginas_adicionales: int = 0
+    campos_dudosos: int = 0
     tipo_documento: str | None = None
     confianza_clasificacion: Decimal | None = None
 
@@ -123,6 +125,7 @@ class FacturaRevision(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     database: str
+    version: str
 
 
 class LoteCreado(BaseModel):
@@ -288,6 +291,10 @@ class VentasDesgloseRequest(BaseModel):
     gastos: list[GastoReporteSemanalItem] = Field(default_factory=list, max_length=200)
     archivo_origen: str | None = Field(default=None, max_length=300)
     actualizada_por: str = Field(min_length=1, max_length=200)
+
+
+class SepararContinuacionRequest(BaseModel):
+    separado_por: str = Field(min_length=1, max_length=200)
 
 
 class DescartarDuplicadosRequest(BaseModel):

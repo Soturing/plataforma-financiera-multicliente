@@ -15,6 +15,7 @@ from app.provider_catalog import (
     find_provider_in_text,
     normalize_provider_rfc,
 )
+from app.page_groups import group_batch_pages
 from app.repository import register_uuid_duplicates
 
 
@@ -313,6 +314,8 @@ def persist_ocr_result(
         "UPDATE core.facturas SET estado = 'requiere_revision', actualizada_en = now(), error_codigo = NULL, error_detalle = NULL WHERE id = %s",
         (invoice_id,),
     )
+    batch = conn.execute("SELECT lote_id FROM core.facturas WHERE id = %s", (invoice_id,)).fetchone()
+    group_batch_pages(conn, batch["lote_id"] if batch else None)
     return {"interpretation_id": interpretation_id, "fields": fields}
 
 

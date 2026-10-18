@@ -628,6 +628,81 @@ def _classify_rfcs(
     return emisor, receptor
 
 
+def _level(level: str, reason: str) -> dict[str, str]:
+    return {"nivel": level, "motivo": reason}
+
+
+def _field_confidence(
+    *, qr: dict[str, Any] | None, rfc_emisor: str | None, emisor_entries: list[dict], provider: str | None,
+    provider_source: str | None, folio: str | None, folio_label: str | None, issue_date: date | None,
+    date_source: str, amounts: dict[str, Any], total: Decimal | None,
+) -> dict[str, dict[str, str]]:
+    """Qué tan confiable es cada campo y por qué: la revisión humana empieza por los dudosos."""
+    result: dict[str, dict[str, str]] = {}
+
+    if rfc_emisor is None:
+        result["rfc_emisor"] = _level("baja", "No se encontró el RFC del emisor")
+    elif qr and qr.get("emisor_rfc"):
+        result["rfc_emisor"] = _level("alta", "Coincide con el QR del SAT")
+    else:
+        entry = next((item for item in emisor_entries if item["rfc"] == rfc_emisor), None)
+        if entry and entry["valido"] and entry["veces"] >= 2:
+            result["rfc_emisor"] = _level("alta", "RFC válido y repetido en el documento")
+        elif entry and entry["valido"]:
+            result["rfc_emisor"] = _level("media", "RFC válido, visto una sola vez")
+        else:
+            result["rfc_emisor"] = _level("baja", "El dígito verificador no valida: puede haber un error de lectura")
+
+    if not provider:
+        result["proveedor_propuesto"] = _level("baja", "No se identificó el proveedor")
+    elif provider_source == "etiqueta":
+        result["proveedor_propuesto"] = _level("alta", "Indicado con la etiqueta Proveedor/Emisor")
+    elif provider_source == "puntaje" and LEGAL_SUFFIX.search(provider):
+        result["proveedor_propuesto"] = _level("alta", "Razón social con sufijo legal junto al RFC del emisor")
+    elif provider_source == "puntaje":
+        result["proveedor_propuesto"] = _level("media", "Nombre cercano al RFC del emisor")
+    else:
+        result["proveedor_propuesto"] = _level("baja", "Tomado del encabezado; confirme que es el emisor")
+
+    if folio is None:
+        result["folio"] = _level("baja", "No se encontró folio; se usó la fecha como referencia")
+    elif folio_label == "numero_cercano":
+        result["folio"] = _level("baja", "Número suelto cerca de la etiqueta de folio")
+    elif folio_label in {"factura", "cotizacion"}:
+        result["folio"] = _level("alta", "Leído junto a su etiqueta")
+    else:
+        result["folio"] = _level("media", "Leído junto a su etiqueta")
+
+    if issue_date is None:
+        result["fecha_emision"] = _level("baja", "No se encontró la fecha")
+    elif date_source in {"etiqueta", "iso"}:
+        result["fecha_emision"] = _level("alta", "Fecha de emisión con su etiqueta")
+    elif date_source == "certificacion":
+        result["fecha_emision"] = _level("media", "Fecha de certificación o tomada de la cuadrícula del encabezado")
+    else:
+        result["fecha_emision"] = _level("baja", "Primera fecha suelta del documento; puede no ser la de emisión")
+
+    if total is None:
+        result["total"] = _level("baja", "No se encontró el total")
+    elif amounts.get("total_verificado"):
+        result["total"] = _level("alta", "Coincide con el importe con letra, el QR o la suma de subtotal e IVA")
+    else:
+        result["total"] = _level("media", "Leído junto a la etiqueta Total; sin segunda fuente que lo confirme")
+
+    subtotal, iva = amounts.get("subtotal"), amounts.get("iva")
+    if subtotal is not None and total is not None:
+        cuadra = abs(
+            subtotal - (amounts.get("descuento") or Decimal("0")) + (iva or Decimal("0"))
+            + (amounts.get("otros_impuestos") or Decimal("0")) - total
+        ) <= Decimal("0.02")
+        level = "alta" if cuadra and amounts.get("total_verificado") else "media" if cuadra else "baja"
+        reason = "Cuadra con el total" if cuadra else "No cuadra con el total: revise subtotal, descuento e IVA"
+        result["subtotal"] = _level(level, reason)
+        if iva is not None:
+            result["iva"] = _level(level, reason)
+    return result
+
+
 def extract_invoice_fields(
     text: str,
     *,
@@ -663,20 +738,29 @@ def extract_invoice_fields(
                     rfc_lines = entry["lineas"]
 
     all_rfcs = {entry["rfc"] for entry in emisor_entries + receptor_entries} | {rfc for rfc in (rfc_emisor, rfc_receptor) if rfc}
+    provider_source = None
     provider = _explicit_provider(lines)
+    if provider:
+        provider_source = "etiqueta"
     if not provider:
         provider = _provider_near_rfc(lines, rfc_lines, tuple(own_names))
+        provider_source = "puntaje" if provider else None
     if not provider:
         header = _header_provider([line for line in lines if not _own_match(line, tuple(own_names))])
         provider = header if header and _looks_like_name(header, tuple(own_names)) and (len(header.split()) >= 2 or len(header) >= 8) else None
+        provider_source = "encabezado" if provider else None
 
-    parsed_date = (
-        _labeled_date(lines, DATE_LABEL_GROUPS[:2])
-        or _iso_datetime(lines)
-        or _labeled_date(lines, DATE_LABEL_GROUPS[2:])
-        or _find_dmy_words(lines)
-        or _find_date(joined)
-    )
+    date_source = "etiqueta"
+    parsed_date = _labeled_date(lines, DATE_LABEL_GROUPS[:2])
+    if parsed_date is None:
+        date_source = "iso"
+        parsed_date = _iso_datetime(lines)
+    if parsed_date is None:
+        date_source = "certificacion"
+        parsed_date = _labeled_date(lines, DATE_LABEL_GROUPS[2:]) or _find_dmy_words(lines)
+    if parsed_date is None:
+        date_source = "suelta"
+        parsed_date = _find_date(joined)
     detected_folio, folio_label = _document_number_v2(lines, all_rfcs, uuid_value)
     if detected_folio is None:
         legacy = _document_number(lines)
@@ -694,12 +778,12 @@ def extract_invoice_fields(
         qr_total = _amount(str(qr["total"]))
         if qr_total is not None and qr_total > 0:
             if amounts["total"] is None or not _near(amounts["total"], qr_total):
-                amounts.update(total=qr_total, subtotal=None, iva=None)
                 refreshed = _select_amounts(lines, joined)
-                for key in ("subtotal", "iva", "descuento", "otros_impuestos"):
-                    amounts[key] = refreshed[key]
-                if amounts["subtotal"] is not None and amounts["subtotal"] > qr_total:
-                    amounts["subtotal"] = qr_total
+                amounts.update(total=qr_total, descuento=refreshed["descuento"], otros_impuestos=refreshed["otros_impuestos"])
+                amounts["subtotal"], amounts["iva"] = _reconcile(
+                    qr_total, refreshed["subtotal"], refreshed["iva"], refreshed["descuento"],
+                    refreshed["otros_impuestos"], set(_amount_pool(lines)),
+                )
             amounts["total_verificado"] = True
     total = amounts["total"]
     # La base exige totales positivos. Un cero leído por OCR significa que el dato no fue
@@ -707,6 +791,11 @@ def extract_invoice_fields(
     if total is not None and total <= 0:
         total = None
 
+    confidence = _field_confidence(
+        qr=qr, rfc_emisor=rfc_emisor, emisor_entries=emisor_entries, provider=provider,
+        provider_source=provider_source, folio=detected_folio, folio_label=folio_label,
+        issue_date=parsed_date, date_source=date_source, amounts=amounts, total=total,
+    )
     return {
         "proveedor_propuesto": provider,
         "rfc_emisor": rfc_emisor,
@@ -723,4 +812,5 @@ def extract_invoice_fields(
         "total": total,
         "total_verificado": amounts["total_verificado"],
         "fuente_qr": bool(qr),
+        "confianza_campos": confidence,
     }

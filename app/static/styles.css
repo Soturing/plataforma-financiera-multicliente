@@ -804,3 +804,19 @@ h1 { font-size: clamp(28px, 3vw, 38px); }
 
 .inline-input { width: 9rem; padding: 0.35rem 0.5rem; text-align: right; }
 
+
+.app-version { margin: 10px 4px 0; color: #8e93bf; font-size: 10px; text-align: center; letter-spacing: .04em; }
+.related-pages { margin-top: 12px; padding: 10px 12px; border: 1px solid #e3d7a8; border-radius: 10px; background: #fff9e5; display: grid; gap: 8px; }
+.related-pages strong { font-size: 12px; color: #5c4a00; }
+.related-page { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.pages-badge { padding: 1px 6px; border-radius: 8px; background: #fff0b8; color: #5c4a00; font-weight: 700; }
+.field-baja input, .field-baja select { border-color: #c0392b !important; background: #fff5f4; }
+.field-media input, .field-media select { border-color: #d9a400 !important; background: #fffbea; }
+.field-reason { display: block; margin-top: 2px; font-size: 10.5px; }
+.field-baja .field-reason { color: #a02f23; }
+.field-media .field-reason { color: #7a5d00; }
+.uncertain-summary { margin: 8px 0; padding: 8px 12px; border: 1px solid #efc9c4; border-radius: 10px; background: #fff8f7; font-size: 12px; }
+.uncertain-summary .low { color: #a02f23; font-weight: 700; }
+.uncertain-summary .mid { color: #7a5d00; }
+.uncertain-summary small { display: block; margin-top: 3px; color: #6b7280; }
+.doubt-badge { padding: 1px 6px; border-radius: 8px; background: #fde2df; color: #a02f23; font-weight: 700; }

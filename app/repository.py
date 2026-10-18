@@ -8,6 +8,7 @@ from psycopg import Connection
 
 from app.errors import DomainError
 from app.fixed_expenses import require_fixed_provider
+from app.page_groups import ACTIVE_CONTINUATION_SQL, related_pages
 from app.schemas import ProcesamientoSimulado
 from app.pdf_splitter import SplitPage
 from app.classification import classify_document, is_expense_document, save_classification
@@ -27,7 +28,16 @@ SELECT
     (
         SELECT count(*)::integer FROM core.validaciones v
         WHERE v.interpretacion_id = i.id AND NOT v.aprobada AND v.severidad = 'error'
-    ) AS validaciones_fallidas
+    ) AS validaciones_fallidas,
+    (
+        SELECT count(*)::integer FROM core.documentos_continuacion dc
+        WHERE dc.factura_principal_id = f.id AND dc.estado = 'activa'
+    ) AS paginas_adicionales,
+    (
+        SELECT count(*)::integer
+        FROM jsonb_each(COALESCE(i.salida_json->'confianza_campos', '{}'::jsonb)) AS campo
+        WHERE campo.value->>'nivel' = 'baja'
+    ) AS campos_dudosos
 FROM core.facturas f
 JOIN catalog.sucursales s ON s.id = f.sucursal_id
 LEFT JOIN LATERAL (
@@ -569,6 +579,7 @@ def list_review_queue(
     clauses = [
         "f.estado = 'requiere_revision'",
         "NOT EXISTS (SELECT 1 FROM core.documentos_duplicados dd WHERE dd.factura_duplicada_id = f.id AND dd.estado = 'pendiente')",
+        ACTIVE_CONTINUATION_SQL,
     ]
     params: list[Any] = []
     if document_type == "gastos":
@@ -621,6 +632,7 @@ def get_review_queue_summary(
     clauses = [
         "f.estado = 'requiere_revision'",
         "NOT EXISTS (SELECT 1 FROM core.documentos_duplicados dd WHERE dd.factura_duplicada_id = f.id AND dd.estado = 'pendiente')",
+        ACTIVE_CONTINUATION_SQL,
     ]
     params: list[Any] = []
     if document_type == "gastos":
@@ -755,7 +767,10 @@ def get_invoice_case(conn: Connection, invoice_id: UUID) -> dict[str, Any]:
             """,
             (invoice["interpretacion_id"],),
         ).fetchall()
-    return {"factura": invoice, "validaciones": validations}
+    return {
+        "factura": invoice, "validaciones": validations,
+        "paginas_relacionadas": related_pages(conn, invoice_id),
+    }
 
 
 def list_catalogs(conn: Connection) -> dict[str, list[dict[str, Any]]]:
@@ -1052,6 +1067,10 @@ def get_analytics_dashboard(
           AND NOT EXISTS (
               SELECT 1 FROM core.documentos_duplicados dd
               WHERE dd.factura_duplicada_id = f.id AND dd.estado = 'pendiente'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM core.documentos_continuacion dc
+              WHERE dc.factura_continuacion_id = f.id AND dc.estado = 'activa'
           )
           AND cd.tipo IN ('factura_fiscal', 'ticket_compra', 'nota_venta', 'remision', 'recibo')
         ORDER BY i.fecha_emision DESC NULLS LAST, f.recibida_en DESC

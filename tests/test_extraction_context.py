@@ -103,3 +103,25 @@ def test_pac_rfc_in_the_digital_stamp_is_not_the_supplier():
 
     assert result["rfc_emisor"] == SUPPLIER
     assert "LSO1306189R5" not in result["rfc_candidates"]
+
+
+def test_field_confidence_marks_verified_fields_high_and_guesses_low():
+    verified = extract_invoice_fields(invoice_text(), **OWN)["confianza_campos"]
+
+    assert verified["total"]["nivel"] == "alta"
+    assert verified["rfc_emisor"]["nivel"] in {"alta", "media"}
+    assert verified["folio"]["nivel"] == "alta"
+    assert verified["subtotal"]["nivel"] == "alta"
+
+    sparse = extract_invoice_fields("FECHA: 11/08/2026\nTOTAL: $500.00")["confianza_campos"]
+    assert sparse["folio"]["nivel"] == "baja"  # se usó la fecha como referencia
+    assert sparse["rfc_emisor"]["nivel"] == "baja"
+    assert sparse["proveedor_propuesto"]["nivel"] == "baja"
+    assert sparse["total"]["nivel"] == "media"  # solo la etiqueta, sin segunda fuente
+    assert sparse["fecha_emision"]["nivel"] == "media"  # etiqueta genérica "FECHA"
+
+    with_qr = extract_invoice_fields(
+        "TOTAL: $99.00",
+        qr={"uuid": "123e4567-e89b-42d3-a456-426614174000", "emisor_rfc": SUPPLIER, "receptor_rfc": CLIENT, "total": "4640.00"},
+    )["confianza_campos"]
+    assert with_qr["rfc_emisor"]["nivel"] == "alta" and with_qr["total"]["nivel"] == "alta"

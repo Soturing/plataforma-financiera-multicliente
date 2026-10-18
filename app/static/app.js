@@ -11,6 +11,7 @@ let providerAdminRows = [];
 let providerImportFile = null;
 let accountingCatalogRows = null;
 let fixedExpenseRows = [];
+let ownEntityRows = [];
 let financeData = null;
 let salesBreakdownData = null;
 let financeLoadSequence = 0;
@@ -54,6 +55,7 @@ async function bootstrap() {
     const status = document.querySelector("#system-status");
     status.classList.add("ok");
     status.innerHTML = `<i></i> ${health.status === "ok" ? "Sistema disponible" : "Revisar sistema"}`;
+    document.querySelector("#app-version").textContent = health.version ? `Versión ${health.version}` : "";
     catalogs = await api("/api/v1/catalogos");
   } catch (error) {
     document.querySelector("#system-status").innerHTML = "<i></i> Sin conexión";
@@ -937,6 +939,12 @@ async function renderProviderAdmin() {
   document.querySelector("#provider-import-form").onsubmit = previewProviderImport;
   document.querySelector("#subcategory-form").onsubmit = submitAccountingCatalog;
   document.querySelector("#fixed-expense-form").onsubmit = submitFixedExpense;
+  document.querySelector("#own-entity-form").onsubmit = submitOwnEntity;
+  document.querySelector("#own-entity-clear").onclick = () => {
+    const entityForm = document.querySelector("#own-entity-form");
+    entityForm.reset();
+    entityForm.elements.activa.checked = true;
+  };
   document.querySelector("#fixed-expense-clear").onclick = () => {
     const form = document.querySelector("#fixed-expense-form");
     form.reset();
@@ -950,13 +958,15 @@ async function renderProviderAdmin() {
 
 async function loadProviderAdmin() {
   try {
-    const [providers, quality, training, accounting, fixedExpenses] = await Promise.all([
+    const [providers, quality, training, accounting, fixedExpenses, ownEntities] = await Promise.all([
       api("/api/v1/proveedores"),
       api("/api/v1/calidad-datos"),
       api("/api/v1/entrenamiento/resumen"),
       api("/api/v1/catalogos/contables"),
       api("/api/v1/gastos-fijos"),
+      api("/api/v1/entidades-propias"),
     ]);
+    ownEntityRows = ownEntities;
     providerAdminRows = providers;
     accountingCatalogRows = accounting;
     fixedExpenseRows = fixedExpenses;
@@ -968,6 +978,42 @@ async function loadProviderAdmin() {
     renderQuality(quality);
     renderAccountingCatalogs();
     renderFixedExpenses();
+    renderOwnEntities();
+  } catch (error) {
+    notify(error.message, true);
+  }
+}
+
+function renderOwnEntities() {
+  const list = document.querySelector("#own-entity-list");
+  const form = document.querySelector("#own-entity-form");
+  if (!list || !form) return;
+  list.innerHTML = ownEntityRows.map(item => `
+    <button class="mini-catalog-row" type="button" data-edit-entity="${item.id}"><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml(item.rfc || "Sin RFC")} · ${item.activa ? "activa" : "inactiva"}</small></button>
+  `).join("") || '<div class="empty">Aún no hay razones sociales registradas aquí; se usan las de las sucursales.</div>';
+  list.querySelectorAll("[data-edit-entity]").forEach(button => button.onclick = () => {
+    const item = ownEntityRows.find(row => row.id === button.dataset.editEntity);
+    form.elements.nombre.value = item.nombre;
+    form.elements.rfc.value = item.rfc || "";
+    form.elements.activa.checked = item.activa;
+  });
+}
+
+async function submitOwnEntity(event) {
+  event.preventDefault();
+  const form = event.target;
+  const payload = {
+    nombre: form.elements.nombre.value.trim(),
+    rfc: form.elements.rfc.value.trim() || null,
+    activa: form.elements.activa.checked,
+    actualizado_por: operator(),
+  };
+  try {
+    await api("/api/v1/entidades-propias", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+    notify("Razón social guardada");
+    form.reset();
+    form.elements.activa.checked = true;
+    await loadProviderAdmin();
   } catch (error) {
     notify(error.message, true);
   }
@@ -1928,7 +1974,7 @@ async function loadQueue(options = {}) {
       <article class="queue-item" data-id="${row.id}" tabindex="0">
         <label class="queue-check" aria-label="Seleccionar ${escapeHtml(row.archivo_nombre)}"><input class="queue-select" type="checkbox" value="${row.id}"></label>
         <span class="priority ${row.validaciones_fallidas ? "error" : ""}"></span>
-        <div class="queue-main"><strong>${escapeHtml(row.proveedor || "Proveedor sin identificar")}</strong><small>${row.folio ? `N.º ${escapeHtml(row.folio)} · ` : ""}${escapeHtml(row.archivo_nombre)}</small></div>
+        <div class="queue-main"><strong>${escapeHtml(row.proveedor || "Proveedor sin identificar")}</strong><small>${row.folio ? `N.º ${escapeHtml(row.folio)} · ` : ""}${escapeHtml(row.archivo_nombre)}${row.paginas_adicionales ? ` · <span class="pages-badge">+${row.paginas_adicionales} pág.</span>` : ""}${row.campos_dudosos ? ` · <span class="doubt-badge">${row.campos_dudosos} por revisar</span>` : ""}</small></div>
         <div class="queue-cell">${escapeHtml(row.sucursal)}<small>${escapeHtml(row.restaurante)}</small></div>
         <div class="queue-cell"><span class="badge ${documentTypeClass(row.tipo_documento)}">${documentType(row.tipo_documento)}</span><small>${isExpenseDocumentType(row.tipo_documento) ? (row.validaciones_fallidas ? `${row.validaciones_fallidas} validaciones` : "Lista para registrar gasto") : "Fuera del flujo de gasto"}</small></div>
         <div class="queue-total">${row.total == null ? "—" : money.format(row.total)}</div>
@@ -2319,7 +2365,9 @@ async function renderReview(id) {
       : `<img alt="Factura ${escapeHtml(item.archivo_nombre)}" src="${fileUrl}">`;
     renderBranchSuggestion(item.sucursal_deteccion);
     renderFields(item);
+    if (!editingApproved) applyFieldConfidence(item.salida_json?.confianza_campos);
     renderValidations(currentCase.validaciones);
+    renderRelatedPages(currentCase.paginas_relacionadas || [], id);
     const aliasSource = item.salida_json?.proveedor_ocr_original || item.proveedor_propuesto;
     const aliasRow = document.querySelector("#remember-alias-row");
     if (aliasSource) {
@@ -2481,6 +2529,68 @@ function trackChanges() {
     ? (changed.size ? "Guardar y registrar gasto" : "Registrar como gasto")
     : nonExpense ? "Marque si genera gasto"
     : changed.size ? "Guardar y aprobar" : currentCase?.factura?.tipo_documento === "factura_fiscal" ? "Aprobar factura" : "Aprobar gasto";
+}
+
+const CONFIDENCE_FIELDS = {
+  proveedor_propuesto: ["proveedor_nombre", "Proveedor"], rfc_emisor: ["rfc_emisor", "RFC"], folio: ["folio", "Folio"],
+  fecha_emision: ["fecha_emision", "Fecha"], subtotal: ["subtotal", "Subtotal"], iva: ["iva", "IVA"], total: ["total", "Total"],
+};
+
+// Resalta los campos que la lectura automática no pudo confirmar: la revisión empieza por ellos.
+function applyFieldConfidence(confidence) {
+  const summary = document.querySelector("#uncertain-summary");
+  const form = document.querySelector("#review-form");
+  if (!summary || !form || !confidence) return;
+  const low = [];
+  const medium = [];
+  Object.entries(CONFIDENCE_FIELDS).forEach(([key, [fieldName, label]]) => {
+    const info = confidence[key];
+    const input = form.elements[fieldName];
+    if (!info || !input || info.nivel === "alta") return;
+    const wrapper = input.closest("label");
+    if (!wrapper) return;
+    wrapper.classList.add(`field-${info.nivel}`);
+    wrapper.title = info.motivo;
+    const note = document.createElement("small");
+    note.className = "field-reason";
+    note.textContent = info.motivo;
+    wrapper.appendChild(note);
+    (info.nivel === "baja" ? low : medium).push(label);
+    input.addEventListener("input", () => {
+      wrapper.classList.remove("field-baja", "field-media");
+      note.remove();
+    }, {once: true});
+  });
+  if (!low.length && !medium.length) return;
+  summary.classList.remove("hidden");
+  summary.innerHTML = `<strong>Revise primero:</strong> ${low.length ? `<span class="low">${low.join(", ")}</span>` : "ningún campo crítico"}` +
+    (medium.length ? ` · <span class="mid">con menos certeza: ${medium.join(", ")}</span>` : "") +
+    `<small>Los campos sin marca coincidieron con una segunda fuente (QR del SAT, importe con letra o aritmética).</small>`;
+}
+
+function renderRelatedPages(items, invoiceId) {
+  const container = document.querySelector("#related-pages");
+  const active = items.filter(item => item.estado === "activa");
+  if (!container || !active.length) return;
+  container.classList.remove("hidden");
+  container.innerHTML = `<strong>Páginas del mismo documento</strong>` + active.map(item => `
+    <div class="related-page">
+      <span>${item.rol === "continuacion" ? "Continuación" : "Documento principal"} · ${escapeHtml(item.archivo_nombre)} · folio ${escapeHtml(item.folio)}</span>
+      <span><a class="button ghost small" target="_blank" href="/api/v1/facturas/${item.id}/archivo">Ver página</a>
+      ${item.rol === "continuacion" ? `<button class="button ghost small" data-separate="${item.vinculo_id}" type="button">Separar</button>` : `<a class="button ghost small" href="#/facturas/${item.id}">Ir al principal</a>`}</span>
+    </div>`).join("");
+  container.querySelectorAll("[data-separate]").forEach(button => button.onclick = async () => {
+    if (!window.confirm("La página volverá a la bandeja como un documento independiente. ¿Separarla?")) return;
+    try {
+      await api(`/api/v1/continuaciones/${button.dataset.separate}/separar`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({separado_por: operator()}),
+      });
+      notify("Página separada; vuelve a la bandeja");
+      renderReview(invoiceId);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
 }
 
 function renderValidations(items) {

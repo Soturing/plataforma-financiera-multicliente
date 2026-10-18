@@ -7,8 +7,12 @@ Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-017) y
 ## Stack
 - Python + FastAPI (`app/main.py`), PostgreSQL 15+ (docker `compose.yaml`), front estático sin build (`app/static/`: `index.html`, `app.js`, `styles.css`).
 - OCR local: PDF digital por capa de texto primero; PaddleOCR solo como respaldo (`app/ocr/`).
-- Migraciones SQL versionadas en `db/migrations/` (001–027). Nueva migración = siguiente número, nunca editar las existentes.
+- Migraciones SQL versionadas en `db/migrations/` (001–031). Nueva migración = siguiente número, nunca editar las existentes.
 - Tests: `tests/` (pytest) y `db/tests/001_pipeline_smoke.sql`.
+
+## Versionado
+- Versión del producto `MAYOR.MENOR.PARCHE` en el archivo `VERSION` (pre-MVP: `0.x.y`); historial en `CHANGELOG.md`; política y pasos en `docs/versionado.md`. Esta rama es la línea de desarrollo hasta el MVP (no se fusiona con las demás). Sacar versión: `python scripts/bump_version.py patch|minor|major`; el commit y la etiqueta `vX.Y.Z` los decide quien revisa.
+- Toda función nueva o cambio visible debe quedar en la sección vigente de `CHANGELOG.md`.
 
 ## Comandos (PowerShell, Windows)
 ```powershell

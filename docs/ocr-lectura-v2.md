@@ -69,3 +69,21 @@ de proveedor baja de ~76 % a ~64 % en la Prueba 1; el RFC no cambia porque el QR
 proveedores creado por una lectura antigua (nombres o RFC erróneos, RFC del cliente como proveedor) contamina
 la nueva lectura, porque el proveedor encontrado por RFC reemplaza el nombre propuesto; conviene depurarlo
 antes de reprocesar.
+
+## Páginas de una misma factura
+
+Si en un lote dos páginas comparten **proveedor y folio detectado** y solo una trae total, la que no lo trae
+se liga como *continuación* de la principal (`core.documentos_continuacion`, migración 031). La continuación
+sale de la bandeja y la revisión muestra las páginas relacionadas del documento con un botón **Separar** que
+la devuelve a la bandeja (lo separado a mano no se vuelve a ligar). Con totales en ambas páginas no se agrupa:
+se trata como posible duplicado. El agrupado corre al guardar cada lectura (`app/page_groups.py`) y es
+idempotente.
+
+## Confianza por campo
+
+Cada lectura guarda en `salida_json.confianza_campos` el nivel (`alta`, `media`, `baja`) y el motivo de cada
+campo: **alta** cuando lo confirma una segunda fuente (QR del SAT, importe con letra, suma de subtotal e IVA,
+RFC válido y repetido, etiqueta explícita); **baja** cuando es una suposición (folio inventado desde la
+fecha, RFC con dígito verificador inválido, proveedor tomado del encabezado). En la Prueba 1 los campos
+marcados `alta` acertaron 123 de 125 veces y los `baja` casi nunca. La pantalla de revisión resalta los
+campos `baja` (rojo) y `media` (ámbar) y la bandeja muestra cuántos campos hay por revisar.

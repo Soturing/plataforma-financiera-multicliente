@@ -35,6 +35,7 @@
         <a href="#/catalogos" data-route="catalogs"><span class="nav-icon">⚙</span><span><strong>Catálogos</strong><small>Proveedores y reglas</small></span></a>
       </nav>
       <div class="sidebar-help"><span>Captura rápida</span><button class="button primary" id="sidebar-upload" type="button">＋ Cargar documentos</button></div>
+      <p class="app-version" id="app-version" aria-label="Versión del sistema"></p>
     </aside>
     <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="Cerrar navegación"></button>
     <main id="app" aria-live="polite"></main>
@@ -625,6 +626,17 @@
         <div id="quality-list" class="quality-list"></div>
       </section>
 
+      <section class="panel own-entity-panel">
+        <div class="panel-title"><div><h2>Razones sociales del grupo</h2><p>Los receptores de tus facturas. El lector las usa para no confundirlas con el proveedor; las sucursales ya aportan su RFC y razón social.</p></div></div>
+        <form id="own-entity-form" class="mini-catalog-form">
+          <input name="nombre" required minlength="4" maxlength="250" placeholder="Razón social o nombre">
+          <input name="rfc" maxlength="20" placeholder="RFC (opcional)">
+          <label class="check-row"><input type="checkbox" name="activa" checked><span>Activa</span></label>
+          <div><button type="button" class="button ghost small" id="own-entity-clear">Limpiar</button><button class="button primary small">Guardar</button></div>
+        </form>
+        <div id="own-entity-list" class="mini-catalog"></div>
+      </section>
+
       <section class="panel fixed-expense-panel">
         <div class="panel-title"><div><h2>Gastos fijos</h2><p>Solo los proveedores de esta lista pueden clasificarse como Gastos fijos. Agréguelos aquí antes de capturar sus facturas.</p></div></div>
         <form id="fixed-expense-form" class="mini-catalog-form">
@@ -679,9 +691,11 @@
         <section class="document-panel panel">
           <div class="panel-title"><div><h2>Documento original</h2><p>Fuente de verdad para la revisión</p></div><a id="open-document" class="button ghost small" target="_blank">Abrir</a></div>
           <div id="document-preview" class="document-preview"></div>
+          <div id="related-pages" class="related-pages hidden"></div>
         </section>
         <section class="data-panel panel">
           <div id="validation-summary"></div>
+          <div id="uncertain-summary" class="uncertain-summary hidden"></div>
           <div id="branch-suggestion" class="branch-suggestion hidden"></div>
           <form id="review-form">
             <div id="review-fields" class="review-fields"></div>
