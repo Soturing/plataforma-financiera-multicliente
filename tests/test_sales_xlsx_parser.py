@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 from app.accounting import _save_weekly_report_expenses
 from app.config import get_settings
 from app.sales_xlsx import parse_sales_xlsx
+from apoyo_db import conexion_pruebas
 
 
 def make_sales_workbook() -> bytes:
@@ -69,7 +70,7 @@ def test_weekly_expense_import_is_idempotent():
         "semana": 32, "numero_factura": None, "descripcion": "1 KILO DE CAFÉ",
         "incluir": True,
     }
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         branch_id = conn.execute("SELECT id FROM catalog.sucursales WHERE clave = 'DEMO-A'").fetchone()["id"]
         first = _save_weekly_report_expenses(
             conn, branch_id=branch_id, expenses=[expense], actor="pytest",

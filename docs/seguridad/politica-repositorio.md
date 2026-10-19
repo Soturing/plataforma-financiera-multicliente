@@ -31,7 +31,7 @@ El repositorio representa el producto reutilizable, no los datos de una consulto
 | Datos financieros y documentos | Base de datos y almacenamiento de objetos aislados por organización |
 | Entregables y exportaciones | Almacenamiento documental autorizado; nunca el repositorio |
 
-Los directorios `deliverables/`, `entregables/`, `output/`, `data/`, `reports/`, `exports/`, `app/static/brands/` y `config/tenants/private/` permanecen ignorados. Ignorar un archivo nuevo no elimina una versión antigua: si un dato sensible llega a un commit, se debe tratar como incidente y sanear el historial antes de publicar.
+Los directorios `deliverables/`, `entregables/`, `output/`, `data/`, `reports/`, `exports/`, `app/static/brands/`, `config/tenants/private/` y `config/secretos/private/` permanecen ignorados. Ignorar un archivo nuevo no elimina una versión antigua: si un dato sensible llega a un commit, se debe tratar como incidente y sanear el historial antes de publicar.
 
 ## Controles de acceso al repositorio
 

@@ -1,0 +1,10 @@
+# Aviso y suspensión preventiva por inactividad (ciclo-vida-usuarios §12).
+[Unit]
+Description=Revisión de inactividad de cuentas
+
+[Service]
+Type=oneshot
+User=facturas-op
+WorkingDirectory=/opt/facturas
+EnvironmentFile=/etc/facturas/mantenimiento.env
+ExecStart=/opt/facturas/venv/bin/python -m app.seguridad.mantenimiento inactividad

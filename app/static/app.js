@@ -10,6 +10,8 @@ let analyticsData = null;
 let providerAdminRows = [];
 let providerImportFile = null;
 let accountingCatalogRows = null;
+let fixedExpenseRows = [];
+let ownEntityRows = [];
 let financeData = null;
 let salesBreakdownData = null;
 let financeLoadSequence = 0;
@@ -21,6 +23,8 @@ let reviewQueueQuery = "";
 let firstReviewId = null;
 
 function operator() {
+  // Con sesión, el servidor usa siempre la identidad de la sesión (D-014).
+  if (typeof session !== "undefined" && session.autenticado) return session.nombre;
   return document.querySelector("#operator").value.trim() || "capturista-demo";
 }
 
@@ -28,7 +32,12 @@ async function api(url, options = {}) {
   const response = await fetch(url, options);
   const type = response.headers.get("content-type") || "";
   const body = type.includes("json") ? await response.json() : await response.text();
-  if (!response.ok) throw new Error(body.detail || body || "No se pudo completar la operación");
+  if (!response.ok) {
+    const detail = body?.detail;
+    if (typeof handleAccessError === "function") handleAccessError(response.status, detail);
+    const message = detail && typeof detail === "object" ? (detail.mensaje || detail.codigo) : detail;
+    throw new Error(message || (typeof body === "string" && body) || "No se pudo completar la operación");
+  }
   return body;
 }
 
@@ -48,12 +57,14 @@ function isPdfFile(file) {
 }
 
 async function bootstrap() {
+  await loadSession();
   try {
     const health = await api("/health");
     const status = document.querySelector("#system-status");
     status.classList.add("ok");
     status.innerHTML = `<i></i> ${health.status === "ok" ? "Sistema disponible" : "Revisar sistema"}`;
-    catalogs = await api("/api/v1/catalogos");
+    document.querySelector("#app-version").textContent = health.version ? `Versión ${health.version}` : "";
+    if (!session.autenticado || hasModule("CATALOGOS")) catalogs = await api("/api/v1/catalogos");
   } catch (error) {
     document.querySelector("#system-status").innerHTML = "<i></i> Sin conexión";
     notify(error.message, true);
@@ -72,6 +83,7 @@ function route() {
   else if (location.hash.startsWith("#/reportes")) renderFinancialReports();
   else if (location.hash.startsWith("#/finanzas")) renderFinanceDashboard();
   else if (location.hash === "#/catalogos") renderProviderAdmin();
+  else if (location.hash === "#/accesos") renderAccess();
   else renderHome();
 }
 
@@ -84,6 +96,7 @@ function currentRoute() {
   if (location.hash.startsWith("#/reportes")) return ["reports", "Reportes financieros"];
   if (location.hash.startsWith("#/finanzas")) return ["finance", "Estado de Resultados"];
   if (location.hash === "#/catalogos") return ["catalogs", "Catálogos y reglas"];
+  if (location.hash === "#/accesos") return ["access", "Usuarios y accesos"];
   if (location.hash.startsWith("#/facturas/")) return ["dashboard", "Revisión de documento"];
   return ["home", "Inicio"];
 }
@@ -93,6 +106,15 @@ async function renderHome() {
   document.querySelector("#show-quick-guide").onclick = () => {
     document.querySelector("#guia-rapida").scrollIntoView({behavior: "smooth", block: "start"});
   };
+  if (session.autenticado) {
+    app.querySelector(".welcome-copy h1 span, h1 span").textContent = session.nombre.split(" ")[0];
+    if (!hasModule("DOCUMENTOS")) {
+      ["#home-pending", "#home-invoices", "#home-other"].forEach(selector => {
+        document.querySelector(selector).textContent = "—";
+      });
+      return;
+    }
+  }
   try {
     const summary = await api("/api/v1/revision/resumen");
     document.querySelector("#home-pending").textContent = summary.total ?? 0;
@@ -157,6 +179,138 @@ async function renderFinanceDashboard() {
   document.querySelector("#analyze-sales-image").onclick = analyzeSalesImage;
   await loadFinanceStatement(!savedPeriod.has("anio_iso"));
 }
+
+const COMMISSION_BASES = {
+  visa: "Ventas Visa", amex: "Ventas Amex", credito: "Ventas con crédito (Visa + Amex)",
+  uber: "Ventas Uber", rappi: "Ventas Rappi", ventas_netas: "Ventas netas", monto_mensual: "Monto fijo mensual",
+};
+
+async function loadCommissionPanel(requestId) {
+  const body = document.querySelector("#commission-rows");
+  if (!body || !financeData) return;
+  const monday = new Date(`${financeData.periodo.fecha_desde}T00:00:00`);
+  const thursday = new Date(monday.getTime() + 3 * 86400000);
+  const year = thursday.getFullYear();
+  const month = thursday.getMonth() + 1;
+  const branch = document.querySelector("#finance-branch").value;
+  const query = new URLSearchParams({anio: year, mes: month});
+  if (branch) query.set("sucursal_clave", branch);
+  const [summary, parameters] = await Promise.all([
+    api(`/api/v1/finanzas/comisiones/mes?${query}`),
+    api(`/api/v1/finanzas/comisiones/parametros${branch ? `?sucursal_clave=${encodeURIComponent(branch)}` : ""}`),
+  ]);
+  if (requestId !== financeLoadSequence) return;
+  document.querySelector("#commission-period-label").textContent =
+    `Mes ${String(month).padStart(2, "0")}/${year}: la proyección usa los porcentajes; el importe real sustituye a la proyección.`;
+  body.innerHTML = summary.map(row => `
+    <tr>
+      <td>${escapeHtml(row.sucursal)}</td><td>${escapeHtml(row.concepto_nombre)}</td>
+      <td class="numeric">${money.format(row.proyectado)}</td>
+      <td class="numeric"><input type="number" step="0.01" min="0" class="inline-input" data-closing-input="${escapeHtml(row.sucursal_clave)}|${row.concepto}" value="${row.real ?? ""}" placeholder="Sin cierre"></td>
+      <td class="numeric">${row.diferencia == null ? "—" : money.format(row.diferencia)}</td>
+      <td><button class="button ghost small" data-closing-save="${escapeHtml(row.sucursal_clave)}|${row.concepto}">Guardar</button></td>
+    </tr>`).join("") || '<tr><td colspan="6"><div class="empty">Configure porcentajes para proyectar comisiones.</div></td></tr>';
+  body.querySelectorAll("[data-closing-save]").forEach(button => button.onclick = async () => {
+    const [branchKey, concept] = button.dataset.closingSave.split("|");
+    const value = body.querySelector(`[data-closing-input="${branchKey}|${concept}"]`).value;
+    try {
+      await api("/api/v1/finanzas/comisiones/cierre", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          sucursal_clave: branchKey, concepto: concept, anio: year, mes: month,
+          importe_real: value === "" ? null : value, actualizado_por: operator(),
+        }),
+      });
+      notify(value === "" ? "Cierre eliminado; vuelve la proyección" : "Cierre real guardado");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+
+  const form = document.querySelector("#commission-parameter-form");
+  form.elements.base.innerHTML = Object.entries(COMMISSION_BASES).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (!branch) { notify("Seleccione una sucursal para editar sus porcentajes", true); return; }
+    const fixed = form.elements.base.value === "monto_mensual";
+    const value = form.elements.valor.value;
+    try {
+      await api("/api/v1/finanzas/comisiones/parametros", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          sucursal_clave: branch, concepto: form.elements.concepto.value,
+          canal: form.elements.canal.value || null, base: form.elements.base.value,
+          porcentaje: fixed ? null : String(Number(value) / 100),
+          monto_mensual: fixed ? value : null, actualizado_por: operator(),
+        }),
+      });
+      notify("Parámetro de comisión guardado");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+  const list = document.querySelector("#commission-parameters");
+  list.innerHTML = branch ? (parameters.map(item => `
+    <div class="mini-catalog-row"><strong>${escapeHtml(COMMISSION_LABELS[item.concepto])}${item.canal ? ` · ${escapeHtml(item.canal)}` : ""}</strong>
+      <small>${escapeHtml(COMMISSION_BASES[item.base])} · ${item.base === "monto_mensual" ? money.format(item.monto_mensual) : `${(Number(item.porcentaje) * 100).toFixed(2)}%`}</small>
+      <button class="button ghost small" type="button" data-delete-parameter="${item.id}">Quitar</button></div>`).join("")
+    || '<div class="empty">Sin porcentajes configurados para esta sucursal.</div>')
+    : '<div class="empty">Seleccione una sucursal para ver y editar sus porcentajes.</div>';
+  list.querySelectorAll("[data-delete-parameter]").forEach(button => button.onclick = async () => {
+    try {
+      await api(`/api/v1/finanzas/comisiones/parametros/${button.dataset.deleteParameter}`, {method: "DELETE"});
+      notify("Parámetro eliminado");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+}
+
+async function loadPayrollPanel(requestId) {
+  const body = document.querySelector("#payroll-rows");
+  if (!body || !financeData) return;
+  const {anio_iso: year, semana_iso: week} = financeData.periodo;
+  const branch = document.querySelector("#finance-branch").value;
+  const query = new URLSearchParams({anio_iso: year, semana_iso: week});
+  if (branch) query.set("sucursal_clave", branch);
+  const rows = await api(`/api/v1/finanzas/nomina?${query}`);
+  if (requestId !== financeLoadSequence) return;
+  document.querySelector("#payroll-period-label").textContent = `Semana ISO ${week} de ${year}: importe capturado a mano por sucursal.`;
+  body.innerHTML = rows.map(row => `
+    <tr>
+      <td>${escapeHtml(row.sucursal)}</td>
+      <td class="numeric">${row.estimado == null ? "—" : money.format(row.estimado)}</td>
+      <td class="numeric"><input type="number" step="0.01" min="0" class="inline-input" data-payroll-input="${escapeHtml(row.sucursal_clave)}" value="${row.capturado ?? ""}" placeholder="Sin captura"></td>
+      <td><input type="text" maxlength="300" data-payroll-note="${escapeHtml(row.sucursal_clave)}" value="${escapeHtml(row.nota || "")}" placeholder="Nota opcional"></td>
+      <td><button class="button ghost small" data-payroll-save="${escapeHtml(row.sucursal_clave)}">Guardar</button></td>
+    </tr>`).join("");
+  body.querySelectorAll("[data-payroll-save]").forEach(button => button.onclick = async () => {
+    const key = button.dataset.payrollSave;
+    const amount = body.querySelector(`[data-payroll-input="${key}"]`).value;
+    try {
+      await api("/api/v1/finanzas/nomina", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          sucursal_clave: key, anio_iso: year, semana_iso: week,
+          monto: amount === "" ? null : amount,
+          nota: body.querySelector(`[data-payroll-note="${key}"]`).value || null,
+          actualizado_por: operator(),
+        }),
+      });
+      notify(amount === "" ? "Captura eliminada; se usa el estimado" : "Nómina guardada");
+      await loadFinanceStatement(false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+}
+
+const COMMISSION_LABELS = {
+  VISA: "Terminal Visa", AMEX: "Terminal Amex", BANCO: "Banco", APPS: "Apps", SERVICIOS: "Servicios",
+};
 
 function downloadWeeklyPurchaseReport() {
   downloadWeeklyReport("/api/v1/finanzas/reporte-compras.pdf");
@@ -446,6 +600,10 @@ async function loadFinanceStatement(useLatest = false) {
     renderFinanceStatement(loadedFinance);
     await loadSalesBreakdown(requestId);
     if (requestId !== financeLoadSequence) return;
+    await loadCommissionPanel(requestId);
+    if (requestId !== financeLoadSequence) return;
+    await loadPayrollPanel(requestId);
+    if (requestId !== financeLoadSequence) return;
     const persisted = new URLSearchParams({
       anio_iso: String(loadedFinance.periodo.anio_iso),
       semana_iso: String(loadedFinance.periodo.semana_iso),
@@ -535,8 +693,9 @@ function renderFinanceStatement(data) {
     ["GASTOS BAR", expenses.bar, "expense", amountPercent(expenses.bar, beverageSales), "Venta de bebidas"],
     ["GASTOS RESTAURANTE", expenses.restaurante, "expense", amountPercent(expenses.restaurante, foodSales), "Venta de alimentos"],
     ["GASTOS MANTENIMIENTO", expenses.mantenimiento, "expense", amountPercent(expenses.mantenimiento, foodAndBeverageSales), "Venta alimentos + bebidas"],
-    ["GASTOS VARIABLES", expenses.variables, "expense", amountPercent(expenses.variables, foodAndBeverageSales), "Venta alimentos + bebidas"],
-    ["GASTOS INSUMOS Y DESECHABLES", expenses.insumos, "expense", amountPercent(expenses.insumos, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS COMISIONES", expenses.comisiones, "expense", amountPercent(expenses.comisiones, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS VARIABLES OPERATIVOS", expenses.variables, "expense", amountPercent(expenses.variables, foodAndBeverageSales), "Venta alimentos + bebidas"],
+    ["GASTOS GASOLINA", expenses.gasolina, "expense", amountPercent(expenses.gasolina, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["GASTOS IMPREVISTOS", expenses.imprevistos, "expense", amountPercent(expenses.imprevistos, foodAndBeverageSales), "Venta alimentos + bebidas"],
     ["TOTAL GASTOS", expenses.total, "subtotal expense-total", amountPercent(expenses.total, foodAndBeverageSales), "Venta alimentos + bebidas"],
     [Number(summary.utilidad_operativa) >= 0 ? "GANANCIA" : "PÉRDIDA", summary.utilidad_operativa, Number(summary.utilidad_operativa) >= 0 ? "total" : "total negative-total", amountPercent(summary.utilidad_operativa, incomeTotal), "Total ingresos"],
@@ -582,11 +741,12 @@ function renderFinanceExpenseDetail(data) {
     bar: "Barra",
     restaurante: "Restaurante",
     mantenimiento: "Mantenimiento",
-    variables: "Variables generales",
-    insumos: "Insumos y desechables",
+    comisiones: "Comisiones",
+    variables: "Variables operativos",
+    gasolina: "Gasolina",
     imprevistos: "Imprevistos",
   };
-  const order = ["fijos", "nomina", "bar", "restaurante", "mantenimiento", "variables", "insumos", "imprevistos"];
+  const order = ["fijos", "nomina", "comisiones", "bar", "restaurante", "mantenimiento", "variables", "gasolina", "imprevistos"];
   const sections = order.filter(key => (groups[key] || []).length || Number(totals[key] || 0));
   if (!sections.length) {
     container.innerHTML = '<div class="empty">No hay gastos aplicados en este periodo.</div>';
@@ -773,9 +933,6 @@ async function renderProviderAdmin() {
   category.innerHTML += (catalogs?.categorias || []).map(item =>
     `<option value="${escapeHtml(item.clave)}">${escapeHtml(item.nombre)}</option>`
   ).join("");
-  document.querySelector("#provider-cost-center").innerHTML += (catalogs?.centros_costo || []).map(item =>
-    `<option value="${escapeHtml(item.clave)}">${escapeHtml(item.nombre)}</option>`
-  ).join("");
   const refreshSubcategories = selected => {
     const selectedCategory = (catalogs?.categorias || []).find(item => item.clave === category.value);
     const rows = (catalogs?.subcategorias || []).filter(item => item.categoria_id === selectedCategory?.id);
@@ -800,7 +957,18 @@ async function renderProviderAdmin() {
   };
   document.querySelector("#provider-import-form").onsubmit = previewProviderImport;
   document.querySelector("#subcategory-form").onsubmit = submitAccountingCatalog;
-  document.querySelector("#cost-center-form").onsubmit = submitAccountingCatalog;
+  document.querySelector("#fixed-expense-form").onsubmit = submitFixedExpense;
+  document.querySelector("#own-entity-form").onsubmit = submitOwnEntity;
+  document.querySelector("#own-entity-clear").onclick = () => {
+    const entityForm = document.querySelector("#own-entity-form");
+    entityForm.reset();
+    entityForm.elements.activa.checked = true;
+  };
+  document.querySelector("#fixed-expense-clear").onclick = () => {
+    const form = document.querySelector("#fixed-expense-form");
+    form.reset();
+    form.elements.activa.checked = true;
+  };
   document.querySelectorAll("[data-clear-catalog]").forEach(button => {
     button.onclick = () => clearAccountingForm(button.dataset.clearCatalog);
   });
@@ -809,14 +977,18 @@ async function renderProviderAdmin() {
 
 async function loadProviderAdmin() {
   try {
-    const [providers, quality, training, accounting] = await Promise.all([
+    const [providers, quality, training, accounting, fixedExpenses, ownEntities] = await Promise.all([
       api("/api/v1/proveedores"),
       api("/api/v1/calidad-datos"),
       api("/api/v1/entrenamiento/resumen"),
       api("/api/v1/catalogos/contables"),
+      api("/api/v1/gastos-fijos"),
+      api("/api/v1/entidades-propias"),
     ]);
+    ownEntityRows = ownEntities;
     providerAdminRows = providers;
     accountingCatalogRows = accounting;
+    fixedExpenseRows = fixedExpenses;
     document.querySelector("#catalog-total").textContent = providers.filter(item => item.activo).length;
     document.querySelector("#catalog-aliases").textContent = providers.reduce((sum, item) => sum + (item.aliases?.length || 0), 0);
     document.querySelector("#catalog-issues").textContent = quality.problemas.length + Number(quality.sucursales_pendientes || 0);
@@ -824,6 +996,92 @@ async function loadProviderAdmin() {
     renderProviderList();
     renderQuality(quality);
     renderAccountingCatalogs();
+    renderFixedExpenses();
+    renderOwnEntities();
+  } catch (error) {
+    notify(error.message, true);
+  }
+}
+
+function renderOwnEntities() {
+  const list = document.querySelector("#own-entity-list");
+  const form = document.querySelector("#own-entity-form");
+  if (!list || !form) return;
+  list.innerHTML = ownEntityRows.map(item => `
+    <button class="mini-catalog-row" type="button" data-edit-entity="${item.id}"><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml(item.rfc || "Sin RFC")} · ${item.activa ? "activa" : "inactiva"}</small></button>
+  `).join("") || '<div class="empty">Aún no hay razones sociales registradas aquí; se usan las de las sucursales.</div>';
+  list.querySelectorAll("[data-edit-entity]").forEach(button => button.onclick = () => {
+    const item = ownEntityRows.find(row => row.id === button.dataset.editEntity);
+    form.elements.nombre.value = item.nombre;
+    form.elements.rfc.value = item.rfc || "";
+    form.elements.activa.checked = item.activa;
+  });
+}
+
+async function submitOwnEntity(event) {
+  event.preventDefault();
+  const form = event.target;
+  const payload = {
+    nombre: form.elements.nombre.value.trim(),
+    rfc: form.elements.rfc.value.trim() || null,
+    activa: form.elements.activa.checked,
+    actualizado_por: operator(),
+  };
+  try {
+    await api("/api/v1/entidades-propias", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+    notify("Razón social guardada");
+    form.reset();
+    form.elements.activa.checked = true;
+    await loadProviderAdmin();
+  } catch (error) {
+    notify(error.message, true);
+  }
+}
+
+const PERIOD_LABELS = {una_semana: "Una semana", mensual: "Mensual", bimestral: "Bimestral", personalizado: "Personalizado"};
+
+function renderFixedExpenses() {
+  const form = document.querySelector("#fixed-expense-form");
+  if (!form) return;
+  const providerSelect = document.querySelector("#fixed-expense-provider");
+  const selected = providerSelect.value;
+  providerSelect.innerHTML = '<option value="">Seleccione un proveedor</option>' + providerAdminRows.filter(item => item.activo).map(item =>
+    `<option value="${item.id}" ${item.id === selected ? "selected" : ""}>${escapeHtml(item.nombre_normalizado)}</option>`
+  ).join("");
+  const fixedCategory = (accountingCatalogRows?.categorias || []).find(item => item.clave === "FIJOS");
+  document.querySelector("#fixed-expense-subcategory").innerHTML = '<option value="">Sin subcategoría</option>' +
+    (accountingCatalogRows?.subcategorias || []).filter(item => item.categoria_id === fixedCategory?.id && item.activa).map(item =>
+      `<option value="${item.id}">${escapeHtml(item.nombre)}</option>`
+    ).join("");
+  document.querySelector("#fixed-expense-list").innerHTML = fixedExpenseRows.map(item => `
+    <button class="mini-catalog-row" type="button" data-edit-fixed="${item.id}"><strong>${escapeHtml(item.proveedor)}</strong><small>${escapeHtml(item.subcategoria || "Sin subcategoría")} · ${escapeHtml(PERIOD_LABELS[item.periodicidad] || "Sin periodicidad")} · ${item.activa ? "activo" : "inactivo"}</small></button>
+  `).join("") || '<div class="empty">Aún no hay proveedores de gastos fijos.</div>';
+  document.querySelectorAll("[data-edit-fixed]").forEach(button => button.onclick = () => {
+    const item = fixedExpenseRows.find(row => row.id === button.dataset.editFixed);
+    form.elements.proveedor_id.value = item.proveedor_id;
+    form.elements.subcategoria_id.value = item.subcategoria_id || "";
+    form.elements.periodicidad.value = item.periodicidad || "";
+    form.elements.activa.checked = item.activa;
+  });
+}
+
+async function submitFixedExpense(event) {
+  event.preventDefault();
+  const form = event.target;
+  const payload = {
+    proveedor_id: form.elements.proveedor_id.value,
+    subcategoria_id: form.elements.subcategoria_id.value || null,
+    periodicidad: form.elements.periodicidad.value || null,
+    activa: form.elements.activa.checked,
+    actualizado_por: operator(),
+  };
+  try {
+    await api("/api/v1/gastos-fijos", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+    notify("Gasto fijo guardado");
+    form.reset();
+    form.elements.activa.checked = true;
+    catalogs = await api("/api/v1/catalogos");
+    await loadProviderAdmin();
   } catch (error) {
     notify(error.message, true);
   }
@@ -842,11 +1100,7 @@ function renderAccountingCatalogs() {
   document.querySelector("#accounting-subcategories").innerHTML = accountingCatalogRows.subcategorias.map(item => `
     <button class="mini-catalog-row" type="button" data-edit-subcategory="${item.id}"><span class="catalog-key">${escapeHtml(item.clave)}</span><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml(item.categoria)} · ${item.usos} usos · ${item.activa ? "activa" : "inactiva"}</small></button>
   `).join("");
-  document.querySelector("#accounting-cost-centers").innerHTML = accountingCatalogRows.centros_costo.map(item => `
-    <button class="mini-catalog-row" type="button" data-edit-cost-center="${item.id}"><span class="catalog-key">${escapeHtml(item.clave)}</span><strong>${escapeHtml(item.nombre)}</strong><small>${item.usos} usos · ${item.activo ? "activo" : "inactivo"}</small></button>
-  `).join("");
   document.querySelectorAll("[data-edit-subcategory]").forEach(button => button.onclick = () => editSubcategory(button.dataset.editSubcategory));
-  document.querySelectorAll("[data-edit-cost-center]").forEach(button => button.onclick = () => editCostCenter(button.dataset.editCostCenter));
 }
 
 function editSubcategory(id) {
@@ -857,15 +1111,6 @@ function editSubcategory(id) {
   form.elements.clave.value = item.clave;
   form.elements.nombre.value = item.nombre;
   form.elements.activa.checked = item.activa;
-}
-
-function editCostCenter(id) {
-  const item = accountingCatalogRows.centros_costo.find(row => row.id === id);
-  const form = document.querySelector("#cost-center-form");
-  form.elements.id.value = item.id;
-  form.elements.clave.value = item.clave;
-  form.elements.nombre.value = item.nombre;
-  form.elements.activo.checked = item.activo;
 }
 
 function clearAccountingForm(formId) {
@@ -879,15 +1124,13 @@ function clearAccountingForm(formId) {
 async function submitAccountingCatalog(event) {
   event.preventDefault();
   const form = event.target;
-  const isSubcategory = form.id === "subcategory-form";
   const payload = Object.fromEntries(new FormData(form));
   payload.actualizado_por = operator();
-  payload[isSubcategory ? "activa" : "activo"] = (form.elements.activa || form.elements.activo).checked;
+  payload.activa = form.elements.activa.checked;
   if (!payload.id) payload.id = null;
-  const endpoint = isSubcategory ? "subcategorias" : "centros-costo";
   try {
-    await api(`/api/v1/catalogos/${endpoint}`, {method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)});
-    notify(isSubcategory ? "Subcategoría guardada" : "Centro de costo guardado");
+    await api("/api/v1/catalogos/subcategorias", {method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+    notify("Subcategoría guardada");
     clearAccountingForm(form.id);
     catalogs = await api("/api/v1/catalogos");
     accountingCatalogRows = await api("/api/v1/catalogos/contables");
@@ -914,7 +1157,7 @@ function renderProviderList() {
   target.innerHTML = rows.length ? rows.map(item => `
     <article class="provider-row">
       <div><strong>${escapeHtml(item.nombre_normalizado)}</strong><small>${escapeHtml(item.razon_social)}${item.rfc ? ` · ${escapeHtml(item.rfc)}` : " · sin RFC"}</small></div>
-      <div><span>${escapeHtml(item.categoria || "Sin regla")}</span><small>${escapeHtml(item.subcategoria || "Sin subcategoría")} · ${escapeHtml(item.centro_costo || "Sin centro")}</small></div>
+      <div><span>${escapeHtml(item.categoria || "Sin regla")}</span><small>${escapeHtml(item.subcategoria || "Sin subcategoría")}</small></div>
       <div class="provider-aliases">${(item.aliases || []).length ? item.aliases.map(alias => `<span>${escapeHtml(alias.alias)}</span>`).join("") : "<small>Sin alias</small>"}</div>
       <button class="button ghost small" data-edit-provider="${item.id}">Editar</button>
     </article>`).join("") : `<div class="empty">No hay coincidencias.</div>`;
@@ -934,7 +1177,6 @@ function editProvider(id) {
   form.elements.nombre_normalizado.value = row.nombre_normalizado || "";
   form.elements.nombre_comercial.value = row.nombre_comercial || "";
   form.elements.categoria.value = row.categoria || "";
-  form.elements.centro_costo.value = row.centro_costo || "";
   form.elements.aliases.value = (row.aliases || []).map(alias => alias.alias).join(" | ");
   form.elements.activo.checked = Boolean(row.activo);
   form.elements.categoria.dispatchEvent(new Event("change"));
@@ -958,7 +1200,7 @@ async function submitProvider(event) {
   payload.activo = form.elements.activo.checked;
   payload.aliases = String(payload.aliases || "").split(/[|;]/).map(value => value.trim()).filter(Boolean);
   payload.actualizado_por = operator();
-  ["id", "rfc", "nombre_comercial", "categoria", "subcategoria", "centro_costo"].forEach(key => {
+  ["id", "rfc", "nombre_comercial", "categoria", "subcategoria"].forEach(key => {
     if (!payload[key]) payload[key] = null;
   });
   try {
@@ -1120,7 +1362,9 @@ async function renderDashboard() {
   populateBranches();
   document.querySelector("#upload-form").onsubmit = submitUpload;
   document.querySelector("#discard-all-duplicates").onclick = discardAllDuplicates;
-  await Promise.all([loadQueue(), loadDuplicates(), loadBatches()]);
+  const [, , , status] = await Promise.all([loadQueue(), loadDuplicates(), loadBatches(), loadOcrStatus()]);
+  scheduleQueueRefresh.wasBusy = Boolean(status?.pendientes);
+  scheduleQueueRefresh(status?.pendientes ? 3000 : 12000);
 }
 
 async function renderArchive() {
@@ -1331,9 +1575,6 @@ async function renderReceipts() {
   document.querySelector("#receipt-category").innerHTML = (catalogs?.categorias || []).map(item =>
     `<option value="${item.id}">${escapeHtml(item.nombre)}</option>`
   ).join("");
-  document.querySelector("#receipt-cost-center").innerHTML = (catalogs?.centros_costo || []).map(item =>
-    `<option value="${item.id}">${escapeHtml(item.nombre)}</option>`
-  ).join("");
   document.querySelector("#informal-provider-options").innerHTML = (catalogs?.proveedores || []).map(item =>
     `<option value="${escapeHtml(item.nombre)}"></option>`
   ).join("");
@@ -1527,7 +1768,11 @@ async function renderAnalyticsDashboard() {
     document.querySelector("#analytics-date-to").value = localDateValue(now);
     document.querySelector("#analytics-period-mode").onchange = toggleAnalyticsPeriodFields;
     document.querySelector("#analytics-apply").onclick = refreshAnalyticsDashboard;
-    document.querySelector("#analytics-category").onchange = refreshAnalyticsDashboard;
+    const analyticsCategory = document.querySelector("#analytics-category");
+    analyticsCategory.innerHTML = '<option value="">Todas</option>' + (catalogs?.categorias || []).map(item =>
+      `<option value="${escapeHtml(item.nombre)}">${escapeHtml(item.nombre)}</option>`
+    ).join("");
+    analyticsCategory.onchange = refreshAnalyticsDashboard;
     toggleAnalyticsPeriodFields();
     await refreshAnalyticsDashboard();
   } catch (error) {
@@ -1702,10 +1947,16 @@ function populateBranches() {
   }
 }
 
-async function loadQueue() {
+async function loadQueue(options = {}) {
   const container = document.querySelector("#queue");
   if (!container) return;
-  container.innerHTML = '<div class="empty">Cargando…</div>';
+  // En las actualizaciones automáticas se conserva lo que la persona ya marcó.
+  const keepSelected = options.keepSelection === true
+    ? new Set([...container.querySelectorAll(".queue-select:checked")].map(input => input.value))
+    : new Set();
+  // Solo se muestra "Cargando…" la primera vez; en las actualizaciones
+  // automáticas la lista no debe parpadear.
+  if (!container.children.length) container.innerHTML = '<div class="empty">Cargando…</div>';
   try {
     const query = new URLSearchParams();
     const provider = document.querySelector("#queue-provider")?.value.trim();
@@ -1742,7 +1993,7 @@ async function loadQueue() {
       <article class="queue-item" data-id="${row.id}" tabindex="0">
         <label class="queue-check" aria-label="Seleccionar ${escapeHtml(row.archivo_nombre)}"><input class="queue-select" type="checkbox" value="${row.id}"></label>
         <span class="priority ${row.validaciones_fallidas ? "error" : ""}"></span>
-        <div class="queue-main"><strong>${escapeHtml(row.proveedor || "Proveedor sin identificar")}</strong><small>${row.folio ? `N.º ${escapeHtml(row.folio)} · ` : ""}${escapeHtml(row.archivo_nombre)}</small></div>
+        <div class="queue-main"><strong>${escapeHtml(row.proveedor || "Proveedor sin identificar")}</strong><small>${row.folio ? `N.º ${escapeHtml(row.folio)} · ` : ""}${escapeHtml(row.archivo_nombre)}${row.paginas_adicionales ? ` · <span class="pages-badge">+${row.paginas_adicionales} pág.</span>` : ""}${row.campos_dudosos ? ` · <span class="doubt-badge">${row.campos_dudosos} por revisar</span>` : ""}</small></div>
         <div class="queue-cell">${escapeHtml(row.sucursal)}<small>${escapeHtml(row.restaurante)}</small></div>
         <div class="queue-cell"><span class="badge ${documentTypeClass(row.tipo_documento)}">${documentType(row.tipo_documento)}</span><small>${isExpenseDocumentType(row.tipo_documento) ? (row.validaciones_fallidas ? `${row.validaciones_fallidas} validaciones` : "Lista para registrar gasto") : "Fuera del flujo de gasto"}</small></div>
         <div class="queue-total">${row.total == null ? "—" : money.format(row.total)}</div>
@@ -1757,6 +2008,7 @@ async function loadQueue() {
       item.onkeydown = event => { if (event.key === "Enter") item.click(); };
     });
     container.querySelectorAll(".queue-select").forEach(input => {
+      input.checked = keepSelected.has(input.value);
       input.onclick = event => event.stopPropagation();
       input.onchange = updateQueueSelection;
     });
@@ -1918,19 +2170,75 @@ function scheduleBatchRefresh() {
     if (document.querySelector("#batches")) {
       loadBatches();
       loadQueue();
+      loadOcrStatus();
     }
   }, 3000);
 }
 
-function scheduleQueueRefresh(remaining = 80) {
+// Un solo ciclo mientras la bandeja está en pantalla. Consultar el estado de la
+// lectura es barato, así que se hace siempre (también detecta lo que suben otras
+// personas); la lista completa solo se vuelve a pedir mientras haya documentos
+// leyéndose y una vez más cuando terminan.
+function scheduleQueueRefresh(delay = 3000) {
   clearTimeout(loadQueue.timer);
-  if (remaining <= 0) return;
   loadQueue.timer = setTimeout(async () => {
-    if (document.querySelector("#queue")) {
-      await Promise.all([loadQueue(), loadDuplicates()]);
-      scheduleQueueRefresh(remaining - 1);
+    if (!document.querySelector("#queue")) return;
+    const status = await loadOcrStatus();
+    const busy = Boolean(status?.pendientes);
+    if (busy || scheduleQueueRefresh.wasBusy) {
+      await Promise.all([loadQueue({ keepSelection: true }), loadDuplicates()]);
     }
-  }, 3000);
+    scheduleQueueRefresh.wasBusy = busy;
+    scheduleQueueRefresh(busy ? 3000 : 12000);
+  }, delay);
+}
+
+function formatEta(seconds) {
+  if (seconds < 60) return "menos de 1 min";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+}
+
+let ocrNoWorkerSince = null;
+
+async function loadOcrStatus() {
+  const box = document.querySelector("#ocr-status");
+  if (!box) return null;
+  try {
+    const status = await api("/api/v1/cola-ocr");
+    const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+    const waiting = status.en_cola + status.reintentando;
+    let tone = "";
+    let html = "";
+    if (status.pendientes && !status.workers_activos) {
+      ocrNoWorkerSince ??= Date.now();
+      tone = "warning";
+      html = Date.now() - ocrNoWorkerSince < 60000
+        ? `<strong>Iniciando el lector de documentos…</strong><span>${plural(status.pendientes, "documento espera", "documentos esperan")} y empezarán en unos segundos.</span>`
+        : `<strong>No hay un lector de documentos activo</strong><span>${plural(status.pendientes, "documento espera", "documentos esperan")}. Verifique que el servicio de lectura esté en ejecución (<code>python -m app.worker_cli</code>).</span>`;
+    } else if (status.pendientes) {
+      ocrNoWorkerSince = null;
+      const parts = [
+        `${status.procesando} en lectura`,
+        `${waiting} en espera${status.reintentando ? ` (${status.reintentando} reintentando)` : ""}`,
+      ];
+      if (status.eta_segundos) parts.push(`termina en ≈ ${formatEta(status.eta_segundos)}`);
+      html = `<i class="pulse" aria-hidden="true"></i><strong>Leyendo documentos</strong><span>${parts.join(" · ")}</span>`;
+    } else if (status.fallidos_24h) {
+      ocrNoWorkerSince = null;
+      tone = "error";
+      html = `<strong>${plural(status.fallidos_24h, "documento no pudo leerse", "documentos no pudieron leerse")} en las últimas 24 h</strong><span>Revise los lotes para reintentarlos o elimínelos.</span>`;
+    } else {
+      ocrNoWorkerSince = null;
+    }
+    box.className = `ocr-status ${tone}${html ? "" : " hidden"}`;
+    box.innerHTML = html;
+    return status;
+  } catch (error) {
+    return null;
+  }
 }
 
 async function loadDuplicates() {
@@ -2006,7 +2314,8 @@ async function submitUpload(event) {
       bulk.set("sucursal_clave", form.get("sucursal_clave"));
       bulk.set("creada_por", operator());
       const result = await api("/api/v1/documentos/carga-masiva", { method: "POST", body: bulk });
-      notify(`${result.creados.length} documentos cargados y procesándose${result.duplicados.length ? ` · ${result.duplicados.length} duplicados omitidos` : ""}`);
+      notify(`${result.creados.length} documentos cargados y en cola de lectura${result.duplicados.length ? ` · ${result.duplicados.length} duplicados omitidos` : ""}${result.errores.length ? ` · ${result.errores.length} con error` : ""}`, result.errores.length > 0 && !result.creados.length);
+      loadOcrStatus();
       event.target.reset();
       document.querySelector("#upload-panel").classList.add("hidden");
       document.body.classList.remove("modal-open");
@@ -2038,7 +2347,8 @@ async function submitUpload(event) {
     const created = await api("/api/v1/facturas", { method: "POST", body: form });
     await api(`/api/v1/facturas/${created.id}/procesar-ocr`, { method: "POST" });
     const isXml = selectedFile?.name?.toLowerCase().endsWith(".xml");
-    notify(isXml ? "XML fiscal cargado; lectura estructurada iniciada" : selectedFile?.type === "application/pdf" ? "Documento cargado; lectura de texto iniciada" : "Documento cargado; OCR local iniciado");
+    notify(isXml ? "XML fiscal cargado; en cola de lectura" : "Documento cargado; en cola de lectura");
+    loadOcrStatus();
     document.querySelector("#upload-panel").classList.add("hidden");
     document.body.classList.remove("modal-open");
     scheduleQueueRefresh();
@@ -2074,7 +2384,9 @@ async function renderReview(id) {
       : `<img alt="Factura ${escapeHtml(item.archivo_nombre)}" src="${fileUrl}">`;
     renderBranchSuggestion(item.sucursal_deteccion);
     renderFields(item);
+    if (!editingApproved) applyFieldConfidence(item.salida_json?.confianza_campos);
     renderValidations(currentCase.validaciones);
+    renderRelatedPages(currentCase.paginas_relacionadas || [], id);
     const aliasSource = item.salida_json?.proveedor_ocr_original || item.proveedor_propuesto;
     const aliasRow = document.querySelector("#remember-alias-row");
     if (aliasSource) {
@@ -2169,8 +2481,7 @@ function renderFields(item) {
     <label>Otros impuestos (opcional)<input type="number" step="0.01" name="otros_impuestos" value="${item.otros_impuestos ?? ""}"></label>
     <label class="wide">Total<input type="number" step="0.01" name="total" value="${item.total ?? ""}"></label>
     <label>Categoría contable<select name="categoria_id">${options(catalogs.categorias, item.categoria_id)}</select></label>
-    <label>Subcategoría (opcional)<select name="subcategoria_id">${optionalOptions(catalogs.subcategorias.filter(x => x.categoria_id === item.categoria_id), item.subcategoria_id)}</select></label>
-    <label class="wide">Centro de costo<select name="centro_costo_id">${options(catalogs.centros_costo, item.centro_costo_id)}</select></label>`;
+    <label>Subcategoría (opcional)<select name="subcategoria_id">${optionalOptions(catalogs.subcategorias.filter(x => x.categoria_id === item.categoria_id), item.subcategoria_id)}</select></label>`;
   const form = document.querySelector("#review-form");
   form.elements.observaciones.value = item.observaciones || "";
   initialValues = Object.fromEntries(new FormData(form));
@@ -2237,6 +2548,68 @@ function trackChanges() {
     ? (changed.size ? "Guardar y registrar gasto" : "Registrar como gasto")
     : nonExpense ? "Marque si genera gasto"
     : changed.size ? "Guardar y aprobar" : currentCase?.factura?.tipo_documento === "factura_fiscal" ? "Aprobar factura" : "Aprobar gasto";
+}
+
+const CONFIDENCE_FIELDS = {
+  proveedor_propuesto: ["proveedor_nombre", "Proveedor"], rfc_emisor: ["rfc_emisor", "RFC"], folio: ["folio", "Folio"],
+  fecha_emision: ["fecha_emision", "Fecha"], subtotal: ["subtotal", "Subtotal"], iva: ["iva", "IVA"], total: ["total", "Total"],
+};
+
+// Resalta los campos que la lectura automática no pudo confirmar: la revisión empieza por ellos.
+function applyFieldConfidence(confidence) {
+  const summary = document.querySelector("#uncertain-summary");
+  const form = document.querySelector("#review-form");
+  if (!summary || !form || !confidence) return;
+  const low = [];
+  const medium = [];
+  Object.entries(CONFIDENCE_FIELDS).forEach(([key, [fieldName, label]]) => {
+    const info = confidence[key];
+    const input = form.elements[fieldName];
+    if (!info || !input || info.nivel === "alta") return;
+    const wrapper = input.closest("label");
+    if (!wrapper) return;
+    wrapper.classList.add(`field-${info.nivel}`);
+    wrapper.title = info.motivo;
+    const note = document.createElement("small");
+    note.className = "field-reason";
+    note.textContent = info.motivo;
+    wrapper.appendChild(note);
+    (info.nivel === "baja" ? low : medium).push(label);
+    input.addEventListener("input", () => {
+      wrapper.classList.remove("field-baja", "field-media");
+      note.remove();
+    }, {once: true});
+  });
+  if (!low.length && !medium.length) return;
+  summary.classList.remove("hidden");
+  summary.innerHTML = `<strong>Revise primero:</strong> ${low.length ? `<span class="low">${low.join(", ")}</span>` : "ningún campo crítico"}` +
+    (medium.length ? ` · <span class="mid">con menos certeza: ${medium.join(", ")}</span>` : "") +
+    `<small>Los campos sin marca coincidieron con una segunda fuente (QR del SAT, importe con letra o aritmética).</small>`;
+}
+
+function renderRelatedPages(items, invoiceId) {
+  const container = document.querySelector("#related-pages");
+  const active = items.filter(item => item.estado === "activa");
+  if (!container || !active.length) return;
+  container.classList.remove("hidden");
+  container.innerHTML = `<strong>Páginas del mismo documento</strong>` + active.map(item => `
+    <div class="related-page">
+      <span>${item.rol === "continuacion" ? "Continuación" : "Documento principal"} · ${escapeHtml(item.archivo_nombre)} · folio ${escapeHtml(item.folio)}</span>
+      <span><a class="button ghost small" target="_blank" href="/api/v1/facturas/${item.id}/archivo">Ver página</a>
+      ${item.rol === "continuacion" ? `<button class="button ghost small" data-separate="${item.vinculo_id}" type="button">Separar</button>` : `<a class="button ghost small" href="#/facturas/${item.id}">Ir al principal</a>`}</span>
+    </div>`).join("");
+  container.querySelectorAll("[data-separate]").forEach(button => button.onclick = async () => {
+    if (!window.confirm("La página volverá a la bandeja como un documento independiente. ¿Separarla?")) return;
+    try {
+      await api(`/api/v1/continuaciones/${button.dataset.separate}/separar`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({separado_por: operator()}),
+      });
+      notify("Página separada; vuelve a la bandeja");
+      renderReview(invoiceId);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
 }
 
 function renderValidations(items) {

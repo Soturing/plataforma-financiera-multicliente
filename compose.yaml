@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-facturas_app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en el archivo .env local}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/10-initial-schema.sql:ro
@@ -32,6 +32,17 @@ services:
       - ./db/migrations/021_document_deletion_and_cancellation.sql:/docker-entrypoint-initdb.d/31-document-deletion-and-cancellation.sql:ro
       - ./db/migrations/022_weekly_report_expenses.sql:/docker-entrypoint-initdb.d/32-weekly-report-expenses.sql:ro
       - ./db/migrations/023_estimated_fixed_expenses.sql:/docker-entrypoint-initdb.d/33-estimated-fixed-expenses.sql:ro
+      - ./db/migrations/024_expense_categories_v2.sql:/docker-entrypoint-initdb.d/34-expense-categories-v2.sql:ro
+      - ./db/migrations/025_fixed_expense_list.sql:/docker-entrypoint-initdb.d/35-fixed-expense-list.sql:ro
+      - ./db/migrations/026_sales_commissions.sql:/docker-entrypoint-initdb.d/36-sales-commissions.sql:ro
+      - ./db/migrations/027_manual_payroll.sql:/docker-entrypoint-initdb.d/37-manual-payroll.sql:ro
+      - ./db/migrations/028_document_type_quotation.sql:/docker-entrypoint-initdb.d/38-document-type-quotation.sql:ro
+      - ./db/migrations/029_own_entities.sql:/docker-entrypoint-initdb.d/39-own-entities.sql:ro
+      - ./db/migrations/030_ocr_job_queue.sql:/docker-entrypoint-initdb.d/40-ocr-job-queue.sql:ro
+      - ./db/migrations/031_document_page_groups.sql:/docker-entrypoint-initdb.d/41-document-page-groups.sql:ro
+      - ./db/migrations/032_restaurantes.sql:/docker-entrypoint-initdb.d/42-restaurantes.sql:ro
+      - ./db/migrations/033_rls_tenant_sucursal.sql:/docker-entrypoint-initdb.d/43-rls-tenant-sucursal.sql:ro
+      - ./db/migrations/034_auditoria_solo_anexado.sql:/docker-entrypoint-initdb.d/44-auditoria-solo-anexado.sql:ro
       - ./db/seeds/001_demo_catalogs.sql:/docker-entrypoint-initdb.d/20-demo-catalogs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturas_app} -d ${POSTGRES_DB:-facturas_demo}"]
@@ -39,5 +50,129 @@ services:
       timeout: 5s
       retries: 10
 
+  # Plano de control: proveedor de identidad (D-021). Se levanta con
+  # `docker compose --profile identidad up -d`. Red propia, sin ruta hacia la
+  # base de negocio; sólo el puerto HTTP local queda expuesto en 127.0.0.1.
+  identidad-postgres:
+    profiles: ["identidad"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${IDENTIDAD_DB_PASSWORD:?Define IDENTIDAD_DB_PASSWORD en el archivo .env local}
+    volumes:
+      - identidad_postgres_data:/var/lib/postgresql/data
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  identidad:
+    profiles: ["identidad"]
+    image: quay.io/keycloak/keycloak:26.7.5
+    # start-dev sólo para el entorno local: HTTP en localhost (contexto seguro
+    # para WebAuthn). Producción usa `start` con TLS detrás del proxy inverso.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://identidad-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${IDENTIDAD_DB_PASSWORD}
+      KC_HOSTNAME: http://localhost:${IDENTIDAD_PORT:-8180}
+      KC_HTTP_PORT: "8080"
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${IDENTIDAD_ADMIN_USER:-instalacion}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTIDAD_ADMIN_PASSWORD:?Define IDENTIDAD_ADMIN_PASSWORD en el archivo .env local}
+      FACTURAS_OIDC_CLIENT_SECRET: ${FACTURAS_OIDC_CLIENT_SECRET:?Define FACTURAS_OIDC_CLIENT_SECRET en el archivo .env local}
+      FACTURAS_IDP_ADMIN_CLIENT_SECRET: ${FACTURAS_IDP_ADMIN_CLIENT_SECRET:?Define FACTURAS_IDP_ADMIN_CLIENT_SECRET en el archivo .env local}
+      FACTURAS_APP_URL: ${FACTURAS_APP_URL:-http://localhost:8000}
+      IDENTIDAD_SMTP_HOST: ${IDENTIDAD_SMTP_HOST:-correo-pruebas}
+      IDENTIDAD_SMTP_PORT: ${IDENTIDAD_SMTP_PORT:-1025}
+      IDENTIDAD_SMTP_FROM: ${IDENTIDAD_SMTP_FROM:-accesos@facturas.localhost}
+    volumes:
+      - ./deploy/identidad/realm-facturas.json:/opt/keycloak/data/import/realm-facturas.json:ro
+    ports:
+      - "127.0.0.1:${IDENTIDAD_PORT:-8180}:8080"
+    networks: [control]
+    depends_on:
+      identidad-postgres:
+        condition: service_healthy
+
+  # Plano de control: identidades, asignaciones, sesiones y auditoría (fase 2).
+  # Base propia, separada de la de negocio y de la del proveedor de identidad.
+  control-postgres:
+    profiles: ["identidad"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: facturas_control
+      POSTGRES_USER: control_owner
+      POSTGRES_PASSWORD: ${CONTROL_OWNER_PASSWORD:?Define CONTROL_OWNER_PASSWORD en el archivo .env local}
+      CONTROL_APP_PASSWORD: ${CONTROL_APP_PASSWORD:?Define CONTROL_APP_PASSWORD en el archivo .env local}
+    ports:
+      - "127.0.0.1:${CONTROL_POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - control_postgres_data:/var/lib/postgresql/data
+      - ./db/control/000_roles.sh:/docker-entrypoint-initdb.d/000_roles.sh:ro
+      - ./db/control/001_control_plane.sql:/docker-entrypoint-initdb.d/001_control_plane.sql:ro
+      - ./db/control/002_restaurantes_pivote.sql:/docker-entrypoint-initdb.d/002_restaurantes_pivote.sql:ro
+      - ./db/control/003_ciclo_vida.sql:/docker-entrypoint-initdb.d/003_ciclo_vida.sql:ro
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U control_owner -d facturas_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Gestor de secretos y claves por cliente (D-025). Tras cada reinicio queda SELLADO
+  # hasta abrirlo: python -m app.plataforma.secretos abrir
+  secretos:
+    profiles: ["identidad"]
+    image: quay.io/openbao/openbao:2.7.1
+    command: ["server"]
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+    cap_add: [IPC_LOCK]
+    ports:
+      - "127.0.0.1:${SECRETOS_PORT:-8200}:8200"
+    volumes:
+      - ./deploy/secretos/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - secretos_datos:/openbao/file
+      - secretos_auditoria:/openbao/logs
+    networks: [control]
+
+  # Sólo desarrollo: destino de respaldos en modo sólo anexado (equivalente local al
+  # bloqueo de objetos de S3). Producción: bucket S3 con Object Lock (D-025).
+  respaldos-destino:
+    profiles: ["identidad"]
+    image: restic/rest-server:0.14.0
+    environment:
+      OPTIONS: "--append-only --private-repos"
+    ports:
+      - "127.0.0.1:${RESPALDOS_PORT:-8090}:8000"
+    volumes:
+      - respaldos_datos:/data
+    networks: [control]
+
+  # Sólo desarrollo: captura los correos de invitación para leerlos en
+  # http://localhost:8025 y desde las pruebas. Nunca envía correo real.
+  correo-pruebas:
+    profiles: ["identidad"]
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:${CORREO_PRUEBAS_PORT:-8025}:8025"
+      # SMTP para las notificaciones de la app en desarrollo (FACTURAS_SMTP_*).
+      - "127.0.0.1:${CORREO_PRUEBAS_SMTP_PORT:-1025}:1025"
+    networks: [control]
+
+networks:
+  control:
+
 volumes:
   postgres_data:
+  identidad_postgres_data:
+  control_postgres_data:
+  secretos_datos:
+  secretos_auditoria:
+  respaldos_datos:

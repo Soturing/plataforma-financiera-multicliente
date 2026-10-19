@@ -1,0 +1,97 @@
+# Data plane de UN cliente (D-016, D-024). Mismo archivo para todos los clientes;
+# lo que cambia es el nombre de proyecto y el archivo de entorno privado:
+#
+#   docker compose -p fa-<clave> -f deploy/tenant/compose.yaml \
+#       --env-file config/tenants/private/<CLAVE>.env up -d
+#
+# Docker antepone el nombre de proyecto al volumen y a la red, así que cada cliente
+# tiene base, volumen y red propios. No lo ejecute a mano: use
+#   python -m app.plataforma.tenants alta ...
+# que además crea los roles, aplica migraciones, registra el cliente y verifica el aislamiento.
+#
+# En el servidor, el backend y los workers del cliente se agregan a este mismo
+# proyecto (fase 7). En desarrollo corren en el equipo con `tenants servir`.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: facturas
+      # Superusuario sólo para aprovisionar; la app nunca lo usa.
+      POSTGRES_USER: dp_admin
+      POSTGRES_PASSWORD: ${DP_ADMIN_PASSWORD:?Falta DP_ADMIN_PASSWORD en el entorno del cliente}
+    ports:
+      - "127.0.0.1:${DP_DB_PORT:?Falta DP_DB_PORT en el entorno del cliente}:5432"
+    volumes:
+      - datos:/var/lib/postgresql/data
+    networks: [dataplane]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dp_admin -d facturas"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Servidor (perfil `servidor`): backend y workers del cliente con la misma imagen.
+  # Los secretos llegan de OpenBao al arrancar (app/plataforma/arranque.py); aquí sólo
+  # viaja la credencial de arranque de la app del cliente.
+  app:
+    profiles: ["servidor"]
+    image: ${FACTURAS_IMAGEN:-facturas-app:sin-ocr}
+    command: ["api"]
+    restart: unless-stopped
+    environment: &entorno_app
+      SECRETOS_URL: http://secretos:8200
+      SECRETOS_APP_ROLE_ID: ${SECRETOS_APP_ROLE_ID:?Falta SECRETOS_APP_ROLE_ID}
+      SECRETOS_APP_SECRET_ID: ${SECRETOS_APP_SECRET_ID:?Falta SECRETOS_APP_SECRET_ID}
+      ARRANQUE_DB_HOST: db
+      ARRANQUE_CONTROL_DB_HOST: control-postgres
+      FACTURAS_TENANT_CLAVE: ${FACTURAS_TENANT_CLAVE}
+      FACTURAS_TENANT_NOMBRE: ${FACTURAS_TENANT_NOMBRE}
+      FACTURAS_APP_URL: ${FACTURAS_APP_URL}
+      FACTURAS_UPLOAD_DIR: /datos/uploads
+      FACTURAS_ACCESO_MODO: ${FACTURAS_ACCESO_MODO:-seguro}
+      FACTURAS_COOKIE_SEGURA: ${FACTURAS_COOKIE_SEGURA:-true}
+      FACTURAS_OIDC_ISSUER: ${FACTURAS_OIDC_ISSUER:-http://localhost:8180/realms/facturas}
+      FACTURAS_OIDC_URL_INTERNA: http://identidad:8080
+      FACTURAS_SMTP_HOST: ${FACTURAS_SMTP_HOST:-correo-pruebas}
+      FACTURAS_SMTP_PORT: ${FACTURAS_SMTP_PORT:-1025}
+      FACTURAS_OCR_AUTOSTART_WORKERS: "false"
+    volumes:
+      # Vista descifrada que monta gocryptfs en el servidor (deploy/servidor/archivos.sh).
+      - ${ARCHIVOS_VISIBLES:?Falta ARCHIVOS_VISIBLES}:/datos/uploads
+    ports:
+      - "127.0.0.1:${FACTURAS_APP_PORT}:8000"   # sólo local; en el servidor entra por el proxy
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      dataplane:
+      control:
+        # Nombre único en la red compartida: el proxy enruta <cliente>.<dominio> a <cliente>-app.
+        aliases: ["${TENANT_ALIAS:?Falta TENANT_ALIAS}-app"]
+
+  workers:
+    profiles: ["servidor"]
+    image: ${FACTURAS_IMAGEN:-facturas-app:sin-ocr}
+    command: ["workers"]
+    restart: unless-stopped
+    environment:
+      <<: *entorno_app
+      FACTURAS_OCR_WORKERS: ${FACTURAS_OCR_WORKERS:-1}
+    volumes:
+      - ${ARCHIVOS_VISIBLES:?Falta ARCHIVOS_VISIBLES}:/datos/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [dataplane, control]
+
+volumes:
+  datos:
+
+networks:
+  dataplane:
+  # Red del plano de control (OpenBao, Keycloak, base de control, proxy). La base del
+  # cliente NO está en esta red: sólo su app y sus workers la alcanzan.
+  control:
+    external: true
+    name: ${CONTROL_RED:-roadmap-usuarios-seguridad-8e43ba_control}

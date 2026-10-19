@@ -21,9 +21,8 @@ class ProcesamientoSimulado(BaseModel):
     descuento: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
     otros_impuestos: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
     total: Decimal = Field(gt=0, decimal_places=2)
-    categoria_clave: str = "VARIABLES"
+    categoria_clave: str = "VARIABLES_OPERATIVOS"
     subcategoria_clave: str | None = None
-    centro_costo_clave: str = "COCINA"
     rfc_emisor: str | None = None
     uuid_fiscal: UUID | None = None
     confianza_ocr: Decimal = Field(default=Decimal("0.95"), ge=0, le=1)
@@ -62,7 +61,7 @@ class CorreccionCampo(BaseModel):
     campo: Literal[
         "proveedor_id", "proveedor_nombre", "sucursal_id", "folio", "fecha_emision", "subtotal", "descuento", "iva",
         "otros_impuestos", "total", "categoria_id", "subcategoria_id",
-        "centro_costo_id", "rfc_emisor", "uuid_fiscal", "observaciones"
+        "rfc_emisor", "uuid_fiscal", "observaciones"
     ]
     valor: Any
     motivo: str | None = Field(default=None, max_length=500)
@@ -117,6 +116,8 @@ class FacturaRevision(BaseModel):
     subcategoria: str | None = None
     confianza: Decimal | None = None
     validaciones_fallidas: int = 0
+    paginas_adicionales: int = 0
+    campos_dudosos: int = 0
     tipo_documento: str | None = None
     confianza_clasificacion: Decimal | None = None
 
@@ -124,6 +125,7 @@ class FacturaRevision(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     database: str
+    version: str
 
 
 class LoteCreado(BaseModel):
@@ -185,7 +187,6 @@ class ProveedorCatalogoRequest(BaseModel):
     nombre_comercial: str | None = Field(default=None, max_length=250)
     categoria: str | None = Field(default=None, max_length=100)
     subcategoria: str | None = Field(default=None, max_length=100)
-    centro_costo: str | None = Field(default=None, max_length=100)
     aliases: list[str] = Field(default_factory=list, max_length=50)
     activo: bool = True
     actualizado_por: str = Field(min_length=1, max_length=200)
@@ -200,11 +201,46 @@ class SubcategoriaCatalogoRequest(BaseModel):
     actualizado_por: str = Field(min_length=1, max_length=200)
 
 
-class CentroCostoCatalogoRequest(BaseModel):
-    id: UUID | None = None
-    clave: str = Field(min_length=2, max_length=50)
-    nombre: str = Field(min_length=2, max_length=150)
-    activo: bool = True
+class EntidadPropiaRequest(BaseModel):
+    nombre: str = Field(min_length=4, max_length=250)
+    rfc: str | None = Field(default=None, max_length=20)
+    activa: bool = True
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
+class GastoFijoRequest(BaseModel):
+    proveedor_id: UUID
+    subcategoria_id: UUID | None = None
+    periodicidad: Literal["una_semana", "mensual", "bimestral", "personalizado"] | None = None
+    activa: bool = True
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
+class ComisionParametroRequest(BaseModel):
+    sucursal_clave: str = Field(min_length=1, max_length=50)
+    concepto: Literal["VISA", "AMEX", "BANCO", "APPS", "SERVICIOS"]
+    canal: Literal["UBER", "RAPPI"] | None = None
+    base: Literal["visa", "amex", "credito", "uber", "rappi", "ventas_netas", "monto_mensual"]
+    porcentaje: Decimal | None = Field(default=None, ge=0, le=1, decimal_places=6)
+    monto_mensual: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
+class ComisionCierreRequest(BaseModel):
+    sucursal_clave: str = Field(min_length=1, max_length=50)
+    concepto: Literal["VISA", "AMEX", "BANCO", "APPS", "SERVICIOS"]
+    anio: int = Field(ge=2000, le=2100)
+    mes: int = Field(ge=1, le=12)
+    importe_real: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    actualizado_por: str = Field(min_length=1, max_length=200)
+
+
+class NominaRequest(BaseModel):
+    sucursal_clave: str = Field(min_length=1, max_length=50)
+    anio_iso: int = Field(ge=2000, le=2100)
+    semana_iso: int = Field(ge=1, le=53)
+    monto: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    nota: str | None = Field(default=None, max_length=300)
     actualizado_por: str = Field(min_length=1, max_length=200)
 
 
@@ -255,6 +291,10 @@ class VentasDesgloseRequest(BaseModel):
     gastos: list[GastoReporteSemanalItem] = Field(default_factory=list, max_length=200)
     archivo_origen: str | None = Field(default=None, max_length=300)
     actualizada_por: str = Field(min_length=1, max_length=200)
+
+
+class SepararContinuacionRequest(BaseModel):
+    separado_por: str = Field(min_length=1, max_length=200)
 
 
 class DescartarDuplicadosRequest(BaseModel):

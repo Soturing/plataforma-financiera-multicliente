@@ -32,9 +32,16 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", plain).strip()
 
 
-def classify_document(text: str) -> Classification:
+def classify_document(text: str, has_sat_qr: bool = False) -> Classification:
     value = normalize(text)
     signals = {
+        "sat_qr": has_sat_qr,
+        "marcas_fiscales": len(re.findall(r"SELLO DIGITAL|CADENA ORIGINAL|FOLIO FISCAL|\bCFDI\b|\bUUID\b|CERTIFICADO DEL SAT", value)) >= 2,
+        "cotizacion": "COTIZACION" in value and ("SIN VALOR FISCAL" in value or "COTIZACION:" in value),
+        "ticket_caja": bool(re.search(r"NECESITA FACTURA|AVISO DE FACTURACION|SOLO SE PUEDEN GENERAR FACTURAS|CODIGO QR DE SU TICKET", value)),
+        "nota_generica": bool(re.search(r"TOTAL PAGO|TOTAL DE ARTICULOS|FIRMA DE CONFORMIDAD", value)),
+        "logistica": bool(re.search(r"ENVASE (?:ENTREGADO|A RECOGER)|COMPROMISO DE PAGO|NOTA DE REMISI", value)),
+        "partidas": bool(re.search(r"\bTOTAL\b", value)) and bool(re.search(r"CANTIDAD|DESCRIPCION|PRECIO|IMPORTE|CONCEPTO", value)),
         "factura": bool(
             re.search(
                 r"\bFACTURA\b|TIPO (?:DE )?COMPROBANTE\s*:?-?\s*(?:I|INGRESO)\b|\bI\s*-\s*INGRESO\b",
@@ -79,6 +86,14 @@ def classify_document(text: str) -> Classification:
 
     if signals["nota_credito"]:
         return Classification("nota_credito", 0.99, ["nota_credito_explicita"], signals)
+    if signals["cotizacion"]:
+        return Classification("cotizacion", 0.9, ["cotizacion_sin_valor_fiscal"], signals)
+    fiscal_evidence = signals["sat_qr"] or signals["marcas_fiscales"]
+    if fiscal_evidence and not signals["complemento_pago"] and (signals["factura"] or signals["sat_qr"]):
+        rules = [name for name in ("sat_qr", "marcas_fiscales", "factura", "uuid", "subtotal", "iva") if signals[name]]
+        return Classification("factura_fiscal", min(0.99, 0.8 + 0.04 * len(rules)), rules, signals)
+    if signals["ticket_caja"] and not signals["uuid"]:
+        return Classification("ticket_compra", 0.9, ["ticket_caja"], signals)
     if signals["nota_venta"]:
         return Classification("nota_venta", 0.93, ["nota_venta_explicita"], signals)
     if signals["remision"]:
@@ -111,6 +126,12 @@ def classify_document(text: str) -> Classification:
         return Classification("comprobante_pago", 0.82, ["comprobante_pago"], signals)
     if signals["recibo"]:
         return Classification("recibo", 0.72, ["recibo_generico"], signals)
+    if signals["logistica"]:
+        return Classification("remision", 0.8, ["remision_logistica"], signals)
+    if signals["nota_generica"]:
+        return Classification("nota_venta", 0.75, ["nota_de_venta_generica"], signals)
+    if signals["partidas"]:
+        return Classification("nota_venta", 0.5, ["partidas_con_total"], signals)
     return Classification("desconocido", 0.35, ["sin_senales_suficientes"], signals)
 
 

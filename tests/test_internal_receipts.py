@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
+from apoyo_db import conexion_pruebas
 
 
 client = TestClient(app)
@@ -13,15 +14,18 @@ client = TestClient(app)
 
 def _catalog_values():
     catalogs = client.get("/api/v1/catalogos").json()
-    category = next(item for item in catalogs["categorias"] if item["clave"] == "VARIABLES")
-    cost_center = next(item for item in catalogs["centros_costo"] if item["clave"] == "GENERAL")
-    return category["id"], cost_center["id"]
+    category = next(item for item in catalogs["categorias"] if item["clave"] == "VARIABLES_OPERATIVOS")
+    return category["id"]
 
 
 def _cleanup():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute(
             "DELETE FROM core.comprobantes_internos WHERE creado_por LIKE 'pytest-recibos%'"
+        )
+        conn.execute(
+            "DELETE FROM catalog.gastos_fijos WHERE proveedor_id IN "
+            "(SELECT id FROM catalog.proveedores WHERE nombre_normalizado = 'Proveedor Informal Pytest')"
         )
         conn.execute(
             "DELETE FROM catalog.sucursales WHERE clave = 'PYTEST-02'"
@@ -29,7 +33,7 @@ def _cleanup():
 
 
 def _payload(total="8500.00", payment="transferencia"):
-    category_id, cost_center_id = _catalog_values()
+    category_id = _catalog_values()
     return {
         "sucursal_clave": "DEMO-A",
         "proveedor_nombre": "Proveedor Informal Pytest",
@@ -38,7 +42,6 @@ def _payload(total="8500.00", payment="transferencia"):
         "metodo_pago": payment,
         "total": total,
         "categoria_id": category_id,
-        "centro_costo_id": cost_center_id,
         "creado_por": "pytest-recibos",
         "rol_creador": "capturista",
     }
@@ -70,7 +73,7 @@ def test_one_approval_publishes_receipt_and_generates_pdf():
         assert approved.status_code == 200, approved.text
         assert approved.json()["estado"] == "aprobado"
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             movement = conn.execute(
                 """
                 SELECT tipo_documento, total, estado_fiscal
@@ -158,11 +161,14 @@ def test_fixed_internal_receipt_can_be_periodified():
     try:
         catalogs = client.get("/api/v1/catalogos").json()
         fixed = next(item for item in catalogs["categorias"] if item["clave"] == "FIJOS")
-        cost_center = next(item for item in catalogs["centros_costo"] if item["clave"] == "GENERAL")
         payload = _payload("40000.00")
+        assert client.post("/api/v1/comprobantes-internos", data=_payload("100.00")).status_code == 201
+        provider_id = next(
+            item["id"] for item in client.get("/api/v1/proveedores").json()
+            if item["nombre_normalizado"] == "Proveedor Informal Pytest"
+        )
         payload.update({
             "categoria_id": fixed["id"],
-            "centro_costo_id": cost_center["id"],
             "fecha_gasto": "2026-08-28",
             "periodificacion": json.dumps({
                 "tipo": "mensual",
@@ -170,6 +176,13 @@ def test_fixed_internal_receipt_can_be_periodified():
                 "periodo_hasta": "2026-08-31",
             }),
         })
+        blocked = client.post("/api/v1/comprobantes-internos", data=payload)
+        assert blocked.status_code == 422, blocked.text
+        listed = client.post(
+            "/api/v1/gastos-fijos",
+            json={"proveedor_id": provider_id, "actualizado_por": "pytest-recibos"},
+        )
+        assert listed.status_code == 200, listed.text
         created = client.post("/api/v1/comprobantes-internos", data=payload)
         assert created.status_code == 201, created.text
         receipt_id = created.json()["id"]
@@ -178,7 +191,7 @@ def test_fixed_internal_receipt_can_be_periodified():
             json={"autorizada_por": "gerente-periodo-1"},
         )
         assert approved.status_code == 200, approved.text
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             rows = conn.execute(
                 """
                 SELECT ps.semana_iso, ps.monto

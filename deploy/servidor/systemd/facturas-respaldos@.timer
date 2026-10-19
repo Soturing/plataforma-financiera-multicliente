@@ -1,0 +1,10 @@
+[Unit]
+Description=Respaldo diario del cliente %i (pérdida máxima 24 h)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

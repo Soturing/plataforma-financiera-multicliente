@@ -10,6 +10,7 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.errors import DomainError
+from app.commissions import weekly_commissions
 
 
 def _clean_key(value: str) -> str:
@@ -22,10 +23,10 @@ def _clean_key(value: str) -> str:
 def list_accounting_catalogs(conn: Connection) -> dict[str, list[dict[str, Any]]]:
     categories = conn.execute(
         """
-        SELECT id, clave, nombre, activa, orden,
+        SELECT id, clave, nombre, activa, orden, tipo_costo, admite_facturas,
                (SELECT count(*) FROM catalog.subcategorias sc WHERE sc.categoria_id = c.id)::integer AS subcategorias
         FROM catalog.categorias c
-        WHERE clave IN ('FIJOS', 'VARIABLES')
+        WHERE activa
         ORDER BY orden
         """
     ).fetchall()
@@ -39,26 +40,13 @@ def list_accounting_catalogs(conn: Connection) -> dict[str, list[dict[str, Any]]
                )::integer AS usos
         FROM catalog.subcategorias sc
         JOIN catalog.categorias c ON c.id = sc.categoria_id
-        WHERE c.clave IN ('FIJOS', 'VARIABLES')
+        WHERE c.activa
         ORDER BY c.orden, sc.nombre
-        """
-    ).fetchall()
-    cost_centers = conn.execute(
-        """
-        SELECT cc.id, cc.clave, cc.nombre, cc.activo,
-               (
-                   (SELECT count(*) FROM ai.interpretaciones i WHERE i.centro_costo_id = cc.id) +
-                   (SELECT count(*) FROM core.facturas_finales f WHERE f.centro_costo_id = cc.id) +
-                   (SELECT count(*) FROM core.comprobantes_internos ci WHERE ci.centro_costo_id = cc.id)
-               )::integer AS usos
-        FROM catalog.centros_costo cc
-        ORDER BY cc.nombre
         """
     ).fetchall()
     return {
         "categorias": categories,
         "subcategorias": subcategories,
-        "centros_costo": cost_centers,
     }
 
 
@@ -94,11 +82,11 @@ def save_subcategory(conn: Connection, data: dict[str, Any], actor: str) -> dict
     key = _clean_key(data["clave"])
     name = str(data["nombre"]).strip()
     category = conn.execute(
-        "SELECT id, clave FROM catalog.categorias WHERE id = %s AND clave IN ('FIJOS', 'VARIABLES')",
+        "SELECT id, clave FROM catalog.categorias WHERE id = %s AND activa AND admite_facturas",
         (data["categoria_id"],),
     ).fetchone()
     if not category:
-        raise DomainError("La categoría debe ser FIJOS o VARIABLES.", 422)
+        raise DomainError("La categoría no existe o no admite subcategorías.", 422)
     before = None
     if item_id:
         before = conn.execute(
@@ -150,46 +138,6 @@ def save_subcategory(conn: Connection, data: dict[str, Any], actor: str) -> dict
         before=before, after=row, actor=actor,
     )
     return {**row, "categoria": category["clave"]}
-
-
-def save_cost_center(conn: Connection, data: dict[str, Any], actor: str) -> dict[str, Any]:
-    item_id = data.get("id")
-    key = _clean_key(data["clave"])
-    name = str(data["nombre"]).strip()
-    before = None
-    if item_id:
-        before = conn.execute(
-            "SELECT id, clave, nombre, activo FROM catalog.centros_costo WHERE id = %s",
-            (item_id,),
-        ).fetchone()
-        if not before:
-            raise DomainError("Centro de costo no encontrado.", 404)
-        row = conn.execute(
-            """
-            UPDATE catalog.centros_costo SET clave = %s, nombre = %s, activo = %s
-            WHERE id = %s RETURNING id, clave, nombre, activo
-            """,
-            (key, name, bool(data.get("activo", True)), item_id),
-        ).fetchone()
-        action = "actualizar"
-        if before["activo"] != row["activo"]:
-            action = "activar" if row["activo"] else "desactivar"
-    else:
-        if conn.execute("SELECT 1 FROM catalog.centros_costo WHERE clave = %s", (key,)).fetchone():
-            raise DomainError("Ya existe un centro de costo con esa clave.", 409)
-        row = conn.execute(
-            """
-            INSERT INTO catalog.centros_costo (clave, nombre, activo)
-            VALUES (%s, %s, %s) RETURNING id, clave, nombre, activo
-            """,
-            (key, name, bool(data.get("activo", True))),
-        ).fetchone()
-        action = "crear"
-    _audit_catalog(
-        conn, entity="centro_costo", entity_id=row["id"], action=action,
-        before=before, after=row, actor=actor,
-    )
-    return row
 
 
 def register_sale(conn: Connection, data: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -456,15 +404,13 @@ def _save_weekly_report_expenses(
         return {"created": 0, "existing": 0}
     catalogs = conn.execute(
         """
-        SELECT c.id AS categoria_id,
-               sb.id AS bebidas_id, si.id AS insumos_id,
-               cb.id AS barra_id, cc.id AS cocina_id
-        FROM catalog.categorias c
-        JOIN catalog.subcategorias sb ON sb.categoria_id = c.id AND sb.clave = 'BEBIDAS' AND sb.activa
-        JOIN catalog.subcategorias si ON si.categoria_id = c.id AND si.clave = 'INSUMOS' AND si.activa
-        JOIN catalog.centros_costo cb ON cb.clave = 'BARRA' AND cb.activo
-        JOIN catalog.centros_costo cc ON cc.clave = 'COCINA' AND cc.activo
-        WHERE c.clave = 'VARIABLES' AND c.activa
+        SELECT cb.id AS categoria_barra_id, sb.id AS bebidas_id,
+               cr.id AS categoria_restaurante_id, si.id AS insumos_id
+        FROM catalog.categorias cb
+        JOIN catalog.subcategorias sb ON sb.categoria_id = cb.id AND sb.clave = 'BEBIDAS' AND sb.activa
+        JOIN catalog.categorias cr ON cr.clave = 'GASTOS_RESTAURANTE' AND cr.activa
+        JOIN catalog.subcategorias si ON si.categoria_id = cr.id AND si.clave = 'INSUMOS' AND si.activa
+        WHERE cb.clave = 'GASTOS_BARRA' AND cb.activa
         """
     ).fetchone()
     if not catalogs:
@@ -504,12 +450,12 @@ def _save_weekly_report_expenses(
             INSERT INTO core.comprobantes_internos (
                 sucursal_id, proveedor_id, numero_documento, numero_documento_origen,
                 fecha_gasto, concepto, metodo_pago, total, categoria_id,
-                subcategoria_id, centro_costo_id, creado_por, rol_creador,
+                subcategoria_id, creado_por, rol_creador,
                 estado, aprobaciones_requeridas, primera_aprobacion_por,
                 primera_aprobacion_en, primera_aprobacion_comentario,
                 origen, referencia_origen
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'capturista',
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'capturista',
                 'aprobado', 1, %s, now(), %s, 'reporte_semanal', %s
             )
             ON CONFLICT (sucursal_id, referencia_origen)
@@ -521,9 +467,8 @@ def _save_weekly_report_expenses(
                 branch_id, provider_id, number,
                 "capturado" if item.get("numero_factura") else "reporte_semanal",
                 item["fecha"], item["descripcion"], payment, item["monto"],
-                catalogs["categoria_id"],
+                catalogs["categoria_barra_id"] if area == "barra" else catalogs["categoria_restaurante_id"],
                 catalogs["bebidas_id"] if area == "barra" else catalogs["insumos_id"],
-                catalogs["barra_id"] if area == "barra" else catalogs["cocina_id"],
                 actor, actor, f"Importado desde {source_filename or 'reporte semanal'}",
                 reference,
             ),
@@ -573,37 +518,6 @@ def _financial_metrics(row: dict[str, Any]) -> dict[str, Any]:
             "sobre_equilibrio" if sales >= break_even else "bajo_equilibrio"
         ),
     }
-
-
-def _estimated_sales_commissions(row: dict[str, Any]) -> list[dict[str, Any]]:
-    """Calcula provisiones semanales a centavos a partir del desglose de ventas."""
-    cents = Decimal("0.01")
-    visa = Decimal(row.get("visa") or 0)
-    amex = Decimal(row.get("amex") or 0)
-    rappi = Decimal(row.get("rappi") or 0)
-    uber = Decimal(row.get("uber") or 0)
-    credit = visa + amex
-    estimates = [
-        ("TERMINALES VISA", visa, Decimal("0.026")),
-        ("TERMINALES AMEX", amex, Decimal("0.038")),
-        ("COMISION BANCO", credit, Decimal("0.022")),
-    ]
-    if row["sucursal_clave"] in {"DEMO-A", "DEMO-B"}:
-        estimates.append(("COMISIONES APLICACIONES", uber, Decimal("0.31")))
-        estimates.append(("COMISIONES APLICACIONES", rappi, Decimal("0.36")))
-    result = []
-    for concept, base, rate in estimates:
-        amount = (base * rate).quantize(cents, rounding=ROUND_HALF_UP)
-        if amount:
-            result.append({
-                "concepto": concept,
-                "base": base,
-                "tasa": rate,
-                "monto": amount,
-                "canal": "UBER" if concept == "COMISIONES APLICACIONES" and rate == Decimal("0.31")
-                         else "RAPPI" if concept == "COMISIONES APLICACIONES" else None,
-            })
-    return result
 
 
 def _provision_period(reference: date, periodicity: str) -> tuple[date, date, int]:
@@ -672,39 +586,108 @@ def _weekly_fixed_provisions(
 def _weekly_actual_payroll(
     conn: Connection, *, anio_iso: int, semana_iso: int, sucursal_clave: str | None
 ) -> list[dict[str, Any]]:
-    return [dict(row) for row in conn.execute(
+    """Nómina capturada a mano para la semana (una fila por sucursal)."""
+    week_start = date.fromisocalendar(anio_iso, semana_iso, 1)
+    rows = conn.execute(
         """
-        WITH movimientos AS (
-            SELECT m.*,
-                   COALESCE(ps.anio_iso, m.anio_iso) AS anio_aplicacion,
-                   COALESCE(ps.semana_iso, m.semana_iso) AS semana_aplicacion,
-                   COALESCE(ps.monto, m.total) AS total_aplicado
-            FROM analytics.movimientos_gasto m
-            LEFT JOIN finance.periodificaciones_gasto pg ON
-                (m.tipo_documento = 'comprobante_interno' AND pg.comprobante_id = m.documento_origen_id)
-                OR (m.tipo_documento <> 'comprobante_interno' AND pg.factura_id = m.documento_origen_id)
-            LEFT JOIN finance.periodificacion_semanas ps ON ps.periodificacion_id = pg.id
-        )
-        SELECT DISTINCT ON (mv.sucursal_clave)
-               mv.movimiento_id, mv.tipo_documento, mv.documento_origen_id,
-               mv.proveedor, mv.fecha, mv.folio, mv.sucursal_clave, mv.sucursal,
-               mv.categoria, mv.subcategoria, mv.centro_costo,
-               mv.total AS total_documento,
-               mv.total_aplicado::numeric(14,2) AS monto_aplicado,
-               COALESCE(NULLIF(ff.forma_pago, ''), NULLIF(ci.metodo_pago, ''), 'No especificado') AS pago,
-               (mv.total_aplicado <> mv.total) AS periodificado
-        FROM movimientos mv
-        LEFT JOIN core.facturas_finales ff
-          ON mv.tipo_documento <> 'comprobante_interno' AND ff.id = mv.movimiento_id
-        LEFT JOIN core.comprobantes_internos ci
-          ON mv.tipo_documento = 'comprobante_interno' AND ci.id = mv.documento_origen_id
-        WHERE mv.anio_aplicacion = %s AND mv.semana_aplicacion = %s
-          AND upper(COALESCE(mv.subcategoria, '')) = 'NÓMINA FIJA'
-          AND (%s::text IS NULL OR mv.sucursal_clave = %s)
-        ORDER BY mv.sucursal_clave, mv.fecha DESC, mv.movimiento_id DESC
+        SELECT n.id AS documento_origen_id, s.clave AS sucursal_clave, s.nombre AS sucursal,
+               n.monto AS total_documento, n.monto AS monto_aplicado, n.nota
+        FROM finance.nomina_semanal n JOIN catalog.sucursales s ON s.id = n.sucursal_id
+        WHERE n.anio_iso = %s AND n.semana_iso = %s
+          AND (%s::text IS NULL OR s.clave = %s)
+        ORDER BY s.clave
         """,
         (anio_iso, semana_iso, sucursal_clave, sucursal_clave),
-    ).fetchall()]
+    ).fetchall()
+    return [
+        {
+            **row,
+            "movimiento_id": None,
+            "tipo_documento": "nomina_manual",
+            "proveedor": "Nómina capturada",
+            "fecha": week_start,
+            "folio": f"NOMINA-{anio_iso}-S{semana_iso:02d}",
+            "categoria": "Nómina",
+            "subcategoria": None,
+            "pago": row["nota"] or "Captura manual",
+            "periodificado": False,
+        }
+        for row in rows
+    ]
+
+
+def get_payroll_overview(
+    conn: Connection, *, anio_iso: int, semana_iso: int, sucursal_clave: str | None
+) -> list[dict[str, Any]]:
+    """Nómina capturada y provisión estimada por sucursal para una semana ISO."""
+    try:
+        week_end = date.fromisocalendar(anio_iso, semana_iso, 7)
+    except ValueError as exc:
+        raise DomainError("La semana ISO indicada no existe.", 422) from exc
+    captured = {
+        row["sucursal_clave"]: row for row in _weekly_actual_payroll(
+            conn, anio_iso=anio_iso, semana_iso=semana_iso, sucursal_clave=sucursal_clave
+        )
+    }
+    estimated: dict[str, Decimal] = {}
+    for provision in _weekly_fixed_provisions(conn, week_end=week_end, sucursal_clave=sucursal_clave):
+        if provision["es_nomina"]:
+            key = provision["sucursal_clave"]
+            estimated[key] = estimated.get(key, Decimal("0")) + provision["monto_semanal"]
+    branches = conn.execute(
+        """
+        SELECT clave, nombre FROM catalog.sucursales
+        WHERE activa AND clave <> 'POR-ASIGNAR' AND (%s::text IS NULL OR clave = %s)
+        ORDER BY clave
+        """,
+        (sucursal_clave, sucursal_clave),
+    ).fetchall()
+    return [
+        {
+            "sucursal_clave": branch["clave"],
+            "sucursal": branch["nombre"],
+            "estimado": estimated.get(branch["clave"]),
+            "capturado": captured[branch["clave"]]["monto_aplicado"] if branch["clave"] in captured else None,
+            "nota": captured[branch["clave"]]["nota"] if branch["clave"] in captured else None,
+        }
+        for branch in branches
+    ]
+
+
+def save_payroll(conn: Connection, data: dict[str, Any], actor: str) -> dict[str, Any]:
+    try:
+        date.fromisocalendar(data["anio_iso"], data["semana_iso"], 1)
+    except ValueError as exc:
+        raise DomainError("La semana ISO indicada no existe.", 422) from exc
+    branch = conn.execute(
+        "SELECT id FROM catalog.sucursales WHERE clave = %s AND activa AND clave <> 'POR-ASIGNAR'",
+        (data["sucursal_clave"],),
+    ).fetchone()
+    if not branch:
+        raise DomainError("Sucursal no encontrada o inactiva.", 422)
+    if data.get("monto") is None:
+        conn.execute(
+            "DELETE FROM finance.nomina_semanal WHERE sucursal_id = %s AND anio_iso = %s AND semana_iso = %s",
+            (branch["id"], data["anio_iso"], data["semana_iso"]),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO finance.nomina_semanal (sucursal_id, anio_iso, semana_iso, monto, nota, registrada_por)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (sucursal_id, anio_iso, semana_iso) DO UPDATE
+            SET monto = EXCLUDED.monto, nota = EXCLUDED.nota,
+                registrada_por = EXCLUDED.registrada_por, actualizada_en = now()
+            """,
+            (branch["id"], data["anio_iso"], data["semana_iso"], data["monto"],
+             (data.get("nota") or "").strip() or None, actor),
+        )
+    return next(
+        item for item in get_payroll_overview(
+            conn, anio_iso=data["anio_iso"], semana_iso=data["semana_iso"],
+            sucursal_clave=data["sucursal_clave"],
+        )
+    )
 
 
 def get_weekly_statement(
@@ -776,30 +759,15 @@ def get_weekly_statement(
         for row in rows
     ]
     week_start = date.fromisocalendar(anio_iso, semana_iso, 1)
-    commission_sources = conn.execute(
-        """
-        SELECT s.clave AS sucursal_clave, s.nombre AS sucursal,
-               sum(v.visa)::numeric(14,2) AS visa,
-               sum(v.amex)::numeric(14,2) AS amex,
-               sum(v.rappi)::numeric(14,2) AS rappi,
-               sum(v.uber)::numeric(14,2) AS uber
-        FROM finance.ventas v
-        JOIN catalog.sucursales s ON s.id = v.sucursal_id
-        WHERE v.fecha BETWEEN %s AND %s
-          AND (%s::text IS NULL OR s.clave = %s)
-        GROUP BY s.clave, s.nombre
-        """,
-        (week_start, week_end, sucursal_clave, sucursal_clave),
-    ).fetchall()
-    commission_detail: list[dict[str, Any]] = []
+    commission_detail = weekly_commissions(
+        conn, anio_iso=anio_iso, semana_iso=semana_iso, sucursal_clave=sucursal_clave,
+        branches={row["sucursal_clave"] for row in rows},
+    )
     commissions_by_branch: dict[str, Decimal] = {}
-    for source in commission_sources:
-        estimates = _estimated_sales_commissions(dict(source))
-        commissions_by_branch[source["sucursal_clave"]] = sum(
-            (item["monto"] for item in estimates), Decimal("0")
+    for item in commission_detail:
+        commissions_by_branch[item["sucursal_clave"]] = (
+            commissions_by_branch.get(item["sucursal_clave"], Decimal("0")) + item["monto"]
         )
-        for item in estimates:
-            commission_detail.append({**dict(source), **item})
     detail = [
         _financial_metrics({
             **item,
@@ -844,20 +812,19 @@ def get_weekly_statement(
             LEFT JOIN finance.periodificacion_semanas ps ON ps.periodificacion_id = pg.id
         )
         SELECT
-            CASE
-                WHEN upper(COALESCE(mv.subcategoria, '')) = 'NÓMINA FIJA' THEN 'nomina'
-                WHEN upper(COALESCE(mv.subcategoria, '')) = 'MANTENIMIENTO' THEN 'mantenimiento'
-                WHEN upper(COALESCE(mv.subcategoria, '')) = 'INSUMOS' THEN 'insumos'
-                WHEN upper(COALESCE(mv.subcategoria, '')) = 'IMPREVISTOS' THEN 'imprevistos'
-                WHEN upper(COALESCE(mv.centro_costo, '')) = 'BARRA' THEN 'bar'
-                WHEN upper(COALESCE(mv.centro_costo, '')) = 'RESTAURANTE / COCINA' THEN 'restaurante'
-                WHEN upper(mv.categoria) = 'FIJOS' THEN 'fijos'
+            CASE mv.categoria_clave
+                WHEN 'FIJOS' THEN 'fijos'
+                WHEN 'GASTOS_BARRA' THEN 'bar'
+                WHEN 'GASTOS_RESTAURANTE' THEN 'restaurante'
+                WHEN 'MANTENIMIENTO' THEN 'mantenimiento'
+                WHEN 'IMPREVISTOS' THEN 'imprevistos'
+                WHEN 'GASOLINA' THEN 'gasolina'
                 ELSE 'variables'
             END AS grupo,
             mv.movimiento_id, mv.tipo_documento, mv.documento_origen_id, mv.proveedor,
             mv.fecha, mv.anio_iso AS anio_documento, mv.semana_iso AS semana_documento,
             mv.anio_aplicacion, mv.semana_aplicacion, mv.folio, mv.sucursal_clave, mv.sucursal,
-            mv.categoria, mv.subcategoria, mv.centro_costo, mv.total AS total_documento,
+            mv.categoria, mv.subcategoria, mv.total AS total_documento,
             mv.total_aplicado::numeric(14,2) AS monto_aplicado,
             COALESCE(NULLIF(ff.forma_pago, ''), NULLIF(ci.metodo_pago, ''), 'No especificado') AS pago,
             (mv.total_aplicado <> mv.total) AS periodificado
@@ -880,12 +847,12 @@ def get_weekly_statement(
         expense_detail.setdefault(group, []).append(dict(row))
     for index, item in enumerate(commission_detail, start=1):
         amount = Decimal(item["monto"])
-        expense_map["variables"] = expense_map.get("variables", Decimal("0")) + amount
+        expense_map["comisiones"] = expense_map.get("comisiones", Decimal("0")) + amount
         channel = f" {item['canal']}" if item.get("canal") else ""
-        expense_detail.setdefault("variables", []).append({
-            "grupo": "variables",
+        expense_detail.setdefault("comisiones", []).append({
+            "grupo": "comisiones",
             "movimiento_id": None,
-            "tipo_documento": "provision_estimada",
+            "tipo_documento": "provision_estimada" if item["estimado"] else "cierre_real",
             "documento_origen_id": None,
             "proveedor": f"{item['concepto']}{channel}",
             "fecha": week_start,
@@ -896,14 +863,16 @@ def get_weekly_statement(
             "folio": f"COMISION-{anio_iso}-S{semana_iso:02d}-{index}",
             "sucursal_clave": item["sucursal_clave"],
             "sucursal": item["sucursal"],
-            "categoria": "VARIABLES",
+            "categoria": "COMISIONES",
             "subcategoria": item["concepto"],
-            "centro_costo": "ADMINISTRACION",
             "total_documento": amount,
             "monto_aplicado": amount,
-            "pago": "Estimación basada en ventas e histórico; sujeta a sustitución al cierre mensual",
-            "periodificado": True,
-            "estimado": True,
+            "pago": (
+                "Proyección según porcentaje; se sustituye con el cierre real del mes"
+                if item["estimado"] else "Importe real de cierre mensual"
+            ),
+            "periodificado": not item["estimado"],
+            "estimado": item["estimado"],
             "base_calculo": item["base"],
             "tasa": item["tasa"],
         })
@@ -932,8 +901,7 @@ def get_weekly_statement(
             "sucursal_clave": item["sucursal_clave"],
             "sucursal": item["sucursal"],
             "categoria": "FIJOS",
-            "subcategoria": "NOMINA FIJA" if item["es_nomina"] else item["concepto"].upper(),
-            "centro_costo": "ADMINISTRACION",
+            "subcategoria": "NOMINA" if item["es_nomina"] else item["concepto"].upper(),
             "total_documento": item["importe_real"] or item["importe_periodo"],
             "monto_aplicado": amount,
             "pago": "Estimacion provisional sin CFDI" if item["estimado"] else "Importe real de cierre",
@@ -964,8 +932,9 @@ def get_weekly_statement(
         "bar": expense_map.get("bar", Decimal("0")),
         "restaurante": expense_map.get("restaurante", Decimal("0")),
         "mantenimiento": expense_map.get("mantenimiento", Decimal("0")),
+        "comisiones": expense_map.get("comisiones", Decimal("0")),
         "variables": expense_map.get("variables", Decimal("0")),
-        "insumos": expense_map.get("insumos", Decimal("0")),
+        "gasolina": expense_map.get("gasolina", Decimal("0")),
         "imprevistos": expense_map.get("imprevistos", Decimal("0")),
         "total": summary["gastos_totales"],
     }

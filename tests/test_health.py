@@ -7,7 +7,9 @@ def test_health():
     with TestClient(app) as client:
         response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "database": "ok"}
+    body = response.json()
+    assert body["status"] == "ok" and body["database"] == "ok"
+    assert body["version"].count(".") == 2
 
 
 def test_ui_and_catalogs_are_available():

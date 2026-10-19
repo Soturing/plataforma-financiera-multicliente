@@ -1,0 +1,8 @@
+# Herramientas de operación en el servidor (alta de clientes, secretos, respaldos, mantenimiento).
+# La app y los workers corren en la imagen deploy/app/Dockerfile; esto sólo instala lo que usan
+# app.plataforma.* y app.seguridad.mantenimiento desde el host. Versiones iguales a requirements.txt.
+httpx==0.28.1
+psycopg[binary]==3.2.9
+pydantic-settings==2.10.1
+cryptography==50.0.2
+PyJWT==2.15.1

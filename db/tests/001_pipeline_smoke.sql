@@ -30,22 +30,20 @@ WITH nueva AS (
         factura_id, ocr_resultado_id, version, modelo_ia, reglas_version,
         proveedor_id, proveedor_propuesto, fecha_emision,
         subtotal, iva, total, categoria_id, subcategoria_id,
-        centro_costo_id, confianza, salida_json
+        confianza, salida_json
     )
     SELECT
         ro.factura_id, ro.id, 1, 'simulado', '0.1',
         p.id, p.nombre_normalizado, DATE '2026-08-07',
         10000, 1600, 11600, c.id, NULL,
-        cc.id, 0.97,
+        0.97,
         '{"proveedor":"Proveedor Ficticio Base","subtotal":10000,"iva":1600,"total":11600}'::jsonb
     FROM resultado_ocr ro
     CROSS JOIN catalog.proveedores p
     CROSS JOIN catalog.categorias c
-    CROSS JOIN catalog.centros_costo cc
     WHERE p.nombre_normalizado = 'Proveedor Ficticio Base'
-      AND c.clave = 'RESTAURANTE'
-      AND cc.clave = 'COCINA'
-    RETURNING id, factura_id, proveedor_id, categoria_id, subcategoria_id, centro_costo_id
+      AND c.clave = 'GASTOS_RESTAURANTE'
+    RETURNING id, factura_id, proveedor_id, categoria_id, subcategoria_id
 ), validacion AS (
     INSERT INTO core.validaciones (
         factura_id, interpretacion_id, codigo, severidad,
@@ -68,12 +66,12 @@ WITH nueva AS (
     INSERT INTO core.facturas_finales (
         factura_id, revision_id, interpretacion_id, sucursal_id,
         proveedor_id, fecha_emision, subtotal, iva, total,
-        categoria_id, subcategoria_id, centro_costo_id, aprobada_por
+        categoria_id, subcategoria_id, aprobada_por
     )
     SELECT
         r.factura_id, r.id, r.interpretacion_id, s.id,
         i.proveedor_id, DATE '2026-08-07', 10000, 1600, 11600,
-        i.categoria_id, i.subcategoria_id, i.centro_costo_id, 'smoke-test'
+        i.categoria_id, i.subcategoria_id, 'smoke-test'
     FROM revision r
     JOIN interpretacion i ON i.id = r.interpretacion_id
     CROSS JOIN catalog.sucursales s

@@ -1,0 +1,120 @@
+# Plano de control en el servidor (D-016, D-019, D-021, D-025).
+#
+#   cd /opt/facturas && docker compose -p facturas -f deploy/servidor/control.compose.yaml \
+#       --env-file /etc/facturas/control.env up -d
+#
+# Único punto expuesto: el proxy (80/443) con TLS automático. Keycloak sólo sirve la
+# pantalla de acceso; su consola de administración, OpenBao y las bases NO se publican
+# (se usan por túnel SSH a 127.0.0.1). Los stacks de cada cliente se unen a la red
+# `facturas_control` (CONTROL_RED en su archivo privado).
+name: facturas
+
+services:
+  proxy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:?Falta DOMINIO}
+      CORREO_TLS: ${CORREO_TLS:?Falta CORREO_TLS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./clientes:/etc/caddy/clientes:ro
+      - caddy_datos:/data
+      - caddy_config:/config
+    networks: [control]
+
+  identidad:
+    image: quay.io/keycloak/keycloak:26.7.5
+    command: ["start", "--import-realm"]
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://identidad-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${IDENTIDAD_DB_PASSWORD:?Falta IDENTIDAD_DB_PASSWORD}
+      KC_HOSTNAME: https://accesos.${DOMINIO}
+      KC_HTTP_ENABLED: "true"            # TLS termina en el proxy; la red interna no sale del servidor
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${IDENTIDAD_ADMIN_USER:-instalacion}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTIDAD_ADMIN_PASSWORD:?Falta IDENTIDAD_ADMIN_PASSWORD}
+      FACTURAS_OIDC_CLIENT_SECRET: ${FACTURAS_OIDC_CLIENT_SECRET:?Falta FACTURAS_OIDC_CLIENT_SECRET}
+      FACTURAS_IDP_ADMIN_CLIENT_SECRET: ${FACTURAS_IDP_ADMIN_CLIENT_SECRET:?Falta FACTURAS_IDP_ADMIN_CLIENT_SECRET}
+      FACTURAS_APP_URL: ${PRIMER_CLIENTE_URL:?Falta PRIMER_CLIENTE_URL}
+      IDENTIDAD_SMTP_HOST: ${SMTP_HOST:?Falta SMTP_HOST}
+      IDENTIDAD_SMTP_PORT: ${SMTP_PORT:-587}
+      IDENTIDAD_SMTP_FROM: ${SMTP_REMITENTE:?Falta SMTP_REMITENTE}
+    volumes:
+      - ../identidad/realm-facturas.json:/opt/keycloak/data/import/realm-facturas.json:ro
+      - ../identidad/truststores:/opt/keycloak/conf/truststores:ro   # raíces del fabricante de las llaves
+    ports:
+      - "127.0.0.1:8180:8080"            # consola de administración: sólo por túnel SSH
+    depends_on:
+      identidad-postgres:
+        condition: service_healthy
+    networks: [control]
+
+  identidad-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${IDENTIDAD_DB_PASSWORD}
+    volumes:
+      - identidad_postgres:/var/lib/postgresql/data
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      retries: 20
+
+  control-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: facturas_control
+      POSTGRES_USER: control_owner
+      POSTGRES_PASSWORD: ${CONTROL_OWNER_PASSWORD:?Falta CONTROL_OWNER_PASSWORD}
+      CONTROL_APP_PASSWORD: ${CONTROL_APP_PASSWORD:?Falta CONTROL_APP_PASSWORD}
+    volumes:
+      - control_postgres:/var/lib/postgresql/data
+      - ../../db/control/000_roles.sh:/docker-entrypoint-initdb.d/000_roles.sh:ro
+      - ../../db/control/001_control_plane.sql:/docker-entrypoint-initdb.d/001_control_plane.sql:ro
+      - ../../db/control/002_restaurantes_pivote.sql:/docker-entrypoint-initdb.d/002_restaurantes_pivote.sql:ro
+      - ../../db/control/003_ciclo_vida.sql:/docker-entrypoint-initdb.d/003_ciclo_vida.sql:ro
+    ports:
+      - "127.0.0.1:5436:5432"
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U control_owner -d facturas_control"]
+      interval: 5s
+      retries: 20
+
+  secretos:
+    image: quay.io/openbao/openbao:2.7.1
+    command: ["server"]
+    restart: unless-stopped
+    cap_add: [IPC_LOCK]
+    volumes:
+      - ../secretos/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - secretos_datos:/openbao/file
+      - secretos_auditoria:/openbao/logs
+    ports:
+      - "127.0.0.1:8200:8200"            # sólo local / túnel SSH; la app lo alcanza por la red interna
+    networks: [control]
+
+volumes:
+  caddy_datos:
+  caddy_config:
+  identidad_postgres:
+  control_postgres:
+  secretos_datos:
+  secretos_auditoria:
+
+networks:
+  control:
+    name: facturas_control
