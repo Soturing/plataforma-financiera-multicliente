@@ -121,6 +121,10 @@ async def autorizar_ruta(request: Request) -> None:
                 decision.error = _error(401, "SESION_REQUERIDA", "Inicie sesión para continuar.", motivo=motivo)
         elif ctx.asignacion_id is None:
             decision.error = _error(409, "CONTEXTO_REQUERIDO", "Seleccione el cliente y el rol con los que trabajará.")
+        elif ctx.requiere_nuevo_autenticador:
+            # Entró con un código de recuperación: primero registra un autenticador nuevo (§10.1).
+            decision.error = _error(403, "AUTENTICADOR_PENDIENTE", "Registre una passkey nueva antes de continuar.",
+                                    url="/auth/registrar-autenticador")
         elif not permitido(ctx.rol, regla.modulo, regla.accion, modulos_asignados=ctx.modulos, condicionados=ctx.condicionados):
             decision.error = _error(403, "SIN_PERMISO", "Su rol no permite esta operación.", modulo=regla.modulo, accion=regla.accion)
         else:

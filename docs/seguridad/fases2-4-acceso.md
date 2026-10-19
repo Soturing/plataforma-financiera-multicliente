@@ -102,5 +102,5 @@ Keycloak usa ~1 GB de RAM y tarda varios minutos en arrancar en este equipo.
 ## 5. Lo que falta
 
 - **Fase 5:** hecha; ver [fase5-data-plane.md](fase5-data-plane.md).
-- **Fase 6:** ya hay invitación, suspensión y cierre de sesiones. Faltan dispositivo perdido, recuperación asistida con espera de 24 h, baja completa, inactividad, y obligar a registrar una passkey nueva tras usar un código de recuperación.
+- **Fase 6:** hecha; ver [fase6-ciclo-vida.md](fase6-ciclo-vida.md).
 - **Fase 7:** secretos, claves por cliente, respaldos y pruebas de penetración.

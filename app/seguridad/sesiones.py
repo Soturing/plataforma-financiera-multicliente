@@ -52,6 +52,7 @@ class Contexto:
     expira_absoluta: datetime
     expira_inactividad: datetime
     metodo_auth: str
+    requiere_nuevo_autenticador: bool = False
     asignacion_id: UUID | None = None
     rol: str | None = None
     rol_nombre: str | None = None
@@ -94,6 +95,7 @@ class Contexto:
             "expira_absoluta": self.expira_absoluta.isoformat(),
             "expira_inactividad": self.expira_inactividad.isoformat(),
             "requiere_contexto": self.asignacion_id is None,
+            "requiere_nuevo_autenticador": self.requiere_nuevo_autenticador,
             "opciones": [
                 {
                     "asignacion_id": str(o["id"]), "rol": o["rol"], "rol_nombre": o["rol_nombre"],
@@ -135,6 +137,7 @@ def crear_sesion(
     identidad: dict,
     asignaciones: list[dict],
     llave_fisica: bool,
+    metodo: str,
     autenticado_en: datetime,
     idp_sid: str | None,
     ip: str | None,
@@ -152,7 +155,7 @@ def crear_sesion(
         """,
         (
             huella(token), identidad["id"], tenant_id, inactividad, ahora() + absoluta, autenticado_en,
-            "LLAVE_FISICA" if llave_fisica else "PASSKEY", llave_fisica, idp_sid, ip, (agente or "")[:300],
+            metodo, llave_fisica, idp_sid, ip, (agente or "")[:300],
         ),
     ).fetchone()
     _limitar_dispositivos(conn, identidad["id"], privilegiada, conservar=fila["id"])
@@ -241,6 +244,7 @@ def resolver(conn: Connection, token: str | None, tenant: dict) -> tuple[Context
         sesion_id=s["id"], identidad_id=ident["id"], nombre=ident["nombre"], correo=ident["correo"],
         llave_fisica=s["llave_fisica"], autenticado_en=s["autenticado_en"], expira_absoluta=s["expira_absoluta"],
         expira_inactividad=momento + s["inactividad_max"], metodo_auth=s["metodo_auth"], opciones=opciones,
+        requiere_nuevo_autenticador=ident["requiere_nuevo_autenticador"],
     )
     if s["asignacion_id"] is not None:
         actual = next((a for a in opciones if a["id"] == s["asignacion_id"] and a["disponible"]), None)

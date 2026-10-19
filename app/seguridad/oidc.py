@@ -21,6 +21,8 @@ from app.config import get_settings
 from app.errors import DomainError
 
 ROL_LLAVE_FISICA = "requiere-llave-fisica"
+# Referencias de método (claim `amr`) que declara cada paso del flujo en el realm.
+METODOS_AMR = {"hwk": "LLAVE_FISICA", "swk": "PASSKEY", "rc": "CODIGO_RECUPERACION"}
 _ALGORITMOS = ["RS256", "ES256"]
 
 
@@ -32,6 +34,7 @@ class IdentidadVerificada:
     autenticado_en: datetime
     llave_fisica: bool
     idp_sid: str | None
+    metodo: str  # LLAVE_FISICA | PASSKEY | CODIGO_RECUPERACION | DESCONOCIDO
 
 
 def interna(url: str) -> str:
@@ -61,7 +64,8 @@ def nuevo_pkce() -> tuple[str, str]:
     return verifier, challenge
 
 
-def url_autorizacion(*, state: str, nonce: str, challenge: str, reautenticar: bool, correo: str | None = None) -> str:
+def url_autorizacion(*, state: str, nonce: str, challenge: str, reautenticar: bool, correo: str | None = None,
+                     accion_kc: str | None = None) -> str:
     s = get_settings()
     params = {
         "client_id": s.oidc_client_id,
@@ -78,6 +82,9 @@ def url_autorizacion(*, state: str, nonce: str, challenge: str, reautenticar: bo
         params.update({"prompt": "login", "max_age": "0"})
     if correo:
         params["login_hint"] = correo
+    if accion_kc:
+        # Acción iniciada por la app: registrar un autenticador con la sesión del proveedor.
+        params["kc_action"] = accion_kc
     return f"{_descubrimiento(s.oidc_issuer)['authorization_endpoint']}?{urlencode(params)}"
 
 
@@ -107,14 +114,18 @@ def canjear_codigo(code: str, verifier: str, nonce: str) -> IdentidadVerificada:
     acceso = verificar_token(tokens["access_token"], audiencia=None)
     if acceso.get("sub") != id_token["sub"]:
         raise DomainError("Respuesta de inicio de sesión inválida.", 401)
-    roles = acceso.get("realm_access", {}).get("roles", [])
+    # El método sale de `amr` (lo que realmente se usó), no del rol asignado. Sin `amr`,
+    # se asume lo más débil: nunca se concede llave física por omisión.
+    amr = [m for m in id_token.get("amr", []) if m in METODOS_AMR]
+    metodo = METODOS_AMR[amr[-1]] if amr else "DESCONOCIDO"
     return IdentidadVerificada(
         subject=id_token["sub"],
         correo=id_token.get("email"),
         nombre=id_token.get("name") or id_token.get("preferred_username"),
         autenticado_en=datetime.fromtimestamp(id_token["auth_time"], tz=timezone.utc),
-        llave_fisica=ROL_LLAVE_FISICA in roles,
+        llave_fisica="hwk" in amr,
         idp_sid=id_token.get("sid"),
+        metodo=metodo,
     )
 
 

@@ -122,7 +122,15 @@
         "require.pushed.authorization.requests": "false"
       },
       "defaultClientScopes": ["basic", "email", "profile", "roles", "acr"],
-      "optionalClientScopes": []
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "amr",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "config": { "id.token.claim": "true", "access.token.claim": "true" }
+        }
+      ]
     },
     {
       "clientId": "facturas-control",
@@ -200,7 +208,7 @@
       "builtIn": false,
       "authenticationExecutions": [
         { "authenticator": "conditional-user-configured", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
-        { "authenticator": "webauthn-authenticator", "requirement": "REQUIRED", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
+        { "authenticator": "webauthn-authenticator", "authenticatorConfig": "amr-llave", "requirement": "REQUIRED", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
       ]
     },
     {
@@ -220,8 +228,8 @@
       "topLevel": false,
       "builtIn": false,
       "authenticationExecutions": [
-        { "authenticator": "webauthn-authenticator-passwordless", "requirement": "ALTERNATIVE", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
-        { "authenticator": "auth-recovery-authn-code-form", "requirement": "ALTERNATIVE", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
+        { "authenticator": "webauthn-authenticator-passwordless", "authenticatorConfig": "amr-passkey", "requirement": "ALTERNATIVE", "priority": 10, "authenticatorFlow": false, "userSetupAllowed": false },
+        { "authenticator": "auth-recovery-authn-code-form", "authenticatorConfig": "amr-codigo", "requirement": "ALTERNATIVE", "priority": 20, "authenticatorFlow": false, "userSetupAllowed": false }
       ]
     },
     {
@@ -249,7 +257,10 @@
   "authenticatorConfig": [
     { "alias": "es-rol-global", "config": { "condUserRole": "requiere-llave-fisica", "negate": "false" } },
     { "alias": "no-es-rol-global", "config": { "condUserRole": "requiere-llave-fisica", "negate": "true" } },
-    { "alias": "no-uso-credencial-fuerte", "config": { "credentials": "webauthn##webauthn-passwordless##recovery-authn-codes", "included": "false" } }
+    { "alias": "no-uso-credencial-fuerte", "config": { "credentials": "webauthn##webauthn-passwordless##recovery-authn-codes", "included": "false" } },
+    { "alias": "amr-llave", "config": { "default.reference.value": "hwk", "default.reference.maxAge": "43200" } },
+    { "alias": "amr-passkey", "config": { "default.reference.value": "swk", "default.reference.maxAge": "43200" } },
+    { "alias": "amr-codigo", "config": { "default.reference.value": "rc", "default.reference.maxAge": "43200" } }
   ],
 
   "requiredActions": [

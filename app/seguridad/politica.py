@@ -227,6 +227,22 @@ RUTAS: dict[tuple[str, str], ReglaRuta] = {
     ("POST", "/api/v1/seguridad/identidades/{identidad_id}/suspender"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
     ("POST", "/api/v1/seguridad/identidades/{identidad_id}/revocar-sesiones"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
     ("GET", "/api/v1/seguridad/auditoria"): ReglaRuta("AUDITORIA", CONSULTAR, Nivel.C1),
+    # Ciclo de vida (fase 6). Las reglas finas (no a sí mismo, roles globales, C3) viven en ciclo_vida.py.
+    ("GET", "/auth/registrar-autenticador"): PUBLICA,
+    ("GET", "/api/v1/seguridad/mi-cuenta"): PUBLICA,
+    ("POST", "/api/v1/seguridad/mi-cuenta/autenticadores/{credencial_id}/perdido"): PUBLICA,
+    ("GET", "/api/v1/seguridad/identidades/{identidad_id}"): ReglaRuta("IDENTIDADES", CONSULTAR, Nivel.C1),
+    ("POST", "/api/v1/seguridad/identidades/{identidad_id}/asignaciones"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("PUT", "/api/v1/seguridad/asignaciones/{asignacion_id}"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/asignaciones/{asignacion_id}/revocar"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/identidades/{identidad_id}/reactivar"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/identidades/{identidad_id}/baja"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/identidades/{identidad_id}/reingreso"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/identidades/{identidad_id}/autenticadores/{credencial_id}/perdido"):
+        ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/identidades/{identidad_id}/recuperacion"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/recuperaciones/{recuperacion_id}/ejecutar"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
+    ("POST", "/api/v1/seguridad/recuperaciones/{recuperacion_id}/cancelar"): ReglaRuta("IDENTIDADES", ADMINISTRAR, Nivel.C2),
 }
 
 

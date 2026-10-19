@@ -147,8 +147,10 @@ def test_batch_can_be_cancelled_and_selected_documents_deleted():
         with conexion_pruebas() as conn:
             assert conn.execute("SELECT count(*) FROM core.facturas WHERE lote_id = %s", (batch_id,)).fetchone()[0] == 0
             assert conn.execute("SELECT count(*) FROM core.lotes_carga WHERE id = %s", (batch_id,)).fetchone()[0] == 0
+            # La auditoría es de sólo anexado (fase 5): se cuentan sólo las filas de este lote.
             assert conn.execute(
-                "SELECT count(*) FROM audit.documentos_eliminados WHERE eliminado_por = 'pytest-pdf'"
+                "SELECT count(*) FROM audit.documentos_eliminados WHERE eliminado_por = 'pytest-pdf' AND lote_id = %s",
+                (batch_id,),
             ).fetchone()[0] == 3
     finally:
         cleanup_batches()

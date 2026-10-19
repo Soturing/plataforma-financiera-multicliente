@@ -285,19 +285,16 @@ class Navegador:
 
     # -- ceremonias -------------------------------------------------------- #
 
-    def iniciar_sesion(self, correo: str, *, usar: str = "webauthn", codigo: str | None = None, **extra: str) -> ResultadoAcceso:
-        """Recorre el flujo de acceso. `usar`: 'webauthn' o 'codigo' (recuperación)."""
-        url, verifier = self.url_autorizacion(**extra)
-        paso = self.ir(url)
+    def _recorrer(self, paso: Pagina | str, correo: str, usar: str, codigo: str | None) -> Pagina | str:
+        """Avanza por las páginas de acceso hasta el callback (devuelve el `code`) o hasta una página final."""
         credencial_enviada = False
         for _ in range(8):
             if isinstance(paso, str):
-                tokens, id_token = self.canjear(paso, verifier)
-                return ResultadoAcceso(paso, None, tokens, id_token)
+                return paso
             if credencial_enviada and _campos(paso) & {"recoveryCodeInput", "authenticatorData"}:
                 # Keycloak rechazó la credencial y vuelve a pedirla: un intento por acceso,
                 # como una persona; reintentar al instante dispara la detección de intentos rápidos.
-                return ResultadoAcceso(None, paso)
+                return paso
             if "username" in _campos(paso):
                 paso = self.enviar(paso, paso.formulario(con_campo="username"), {"username": correo})
             elif usar == "codigo" and "recoveryCodeInput" in _campos(paso):
@@ -312,28 +309,24 @@ class Navegador:
                 credencial_enviada = True
                 paso = self.enviar(paso, paso.formulario(con_campo="authenticatorData"), self._firmar(paso))
             else:
-                return ResultadoAcceso(None, paso)
-        return ResultadoAcceso(None, paso if isinstance(paso, Pagina) else None)
+                return paso
+        return paso
 
-    def autenticar_desde(self, url: str, correo: str) -> dict[str, str]:
-        """Recorre una URL de autorización generada por la app y devuelve `code` y `state` del callback."""
-        paso = self.ir(url)
-        enviada = False
-        for _ in range(6):
-            if isinstance(paso, str):
-                q = parse_qs(urlparse(self.ultimo_callback).query)
-                return {"code": q["code"][0], "state": q["state"][0]}
-            campos = _campos(paso)
-            if enviada and "authenticatorData" in campos:
-                break
-            if "username" in campos:
-                paso = self.enviar(paso, paso.formulario(con_campo="username"), {"username": correo})
-            elif "authenticatorData" in campos:
-                enviada = True
-                paso = self.enviar(paso, paso.formulario(con_campo="authenticatorData"), self._firmar(paso))
-            else:
-                break
-        raise AssertionError(f"No se completó el acceso: {paso.resumen() if isinstance(paso, Pagina) else paso}")
+    def iniciar_sesion(self, correo: str, *, usar: str = "webauthn", codigo: str | None = None, **extra: str) -> ResultadoAcceso:
+        """Recorre el flujo de acceso. `usar`: 'webauthn' o 'codigo' (recuperación)."""
+        url, verifier = self.url_autorizacion(**extra)
+        paso = self._recorrer(self.ir(url), correo, usar, codigo)
+        if isinstance(paso, str):
+            tokens, id_token = self.canjear(paso, verifier)
+            return ResultadoAcceso(paso, None, tokens, id_token)
+        return ResultadoAcceso(None, paso)
+
+    def autenticar_desde(self, url: str, correo: str, *, usar: str = "webauthn", codigo: str | None = None) -> dict[str, str]:
+        """Recorre una URL de autorización generada por la app y devuelve los parámetros del callback."""
+        paso = self._recorrer(self.ir(url), correo, usar, codigo)
+        if not isinstance(paso, str):
+            raise AssertionError(f"No se completó el acceso: {paso.resumen()}")
+        return {k: v[0] for k, v in parse_qs(urlparse(self.ultimo_callback).query).items()}
 
     def completar_invitacion(self, enlace: str, *, etiqueta: str = "dispositivo de prueba") -> Pagina | str:
         """Abre el enlace del correo y registra el autenticador (y códigos si se piden)."""

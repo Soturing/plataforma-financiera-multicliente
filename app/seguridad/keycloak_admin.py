@@ -91,9 +91,28 @@ def cerrar_sesiones(user_id: str) -> None:
     _req("POST", f"/users/{user_id}/logout")
 
 
+TIPOS_FUERTES = {"webauthn": "Llave física", "webauthn-passwordless": "Passkey", "recovery-authn-codes": "Códigos de recuperación"}
+
+
 def autenticadores(user_id: str) -> list[dict]:
     """Metadatos de los autenticadores registrados (sin material criptográfico)."""
     return [
-        {"tipo": c["type"], "etiqueta": c.get("userLabel"), "creado": c.get("createdDate")}
+        {"id": c["id"], "tipo": c["type"], "tipo_nombre": TIPOS_FUERTES.get(c["type"], c["type"]),
+         "etiqueta": c.get("userLabel"), "creado": c.get("createdDate")}
         for c in _req("GET", f"/users/{user_id}/credentials").json()
     ]
+
+
+def eliminar_autenticador(user_id: str, credencial_id: str) -> None:
+    _req("DELETE", f"/users/{user_id}/credentials/{credencial_id}")
+
+
+def eliminar_todos_los_autenticadores(user_id: str) -> int:
+    lista = autenticadores(user_id)
+    for c in lista:
+        eliminar_autenticador(user_id, c["id"])
+    return len(lista)
+
+
+def habilitar(user_id: str) -> None:
+    _req("PUT", f"/users/{user_id}", json={"enabled": True})

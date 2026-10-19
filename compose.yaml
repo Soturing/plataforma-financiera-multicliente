@@ -116,6 +116,7 @@ services:
       - ./db/control/000_roles.sh:/docker-entrypoint-initdb.d/000_roles.sh:ro
       - ./db/control/001_control_plane.sql:/docker-entrypoint-initdb.d/001_control_plane.sql:ro
       - ./db/control/002_restaurantes_pivote.sql:/docker-entrypoint-initdb.d/002_restaurantes_pivote.sql:ro
+      - ./db/control/003_ciclo_vida.sql:/docker-entrypoint-initdb.d/003_ciclo_vida.sql:ro
     networks: [control]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U control_owner -d facturas_control"]
@@ -130,6 +131,8 @@ services:
     image: axllent/mailpit:v1.31.3
     ports:
       - "127.0.0.1:${CORREO_PRUEBAS_PORT:-8025}:8025"
+      # SMTP para las notificaciones de la app en desarrollo (FACTURAS_SMTP_*).
+      - "127.0.0.1:${CORREO_PRUEBAS_SMTP_PORT:-1025}:1025"
     networks: [control]
 
 networks:

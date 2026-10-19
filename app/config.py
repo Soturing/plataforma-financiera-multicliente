@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     # Identidad de este data plane (D-016): la sesión debe pertenecer a este cliente.
     tenant_clave: str = "GRUPO-DEMO"
     tenant_nombre: str = "Grupo restaurantero demo"
+    # Avisos del ciclo de vida (app/seguridad/notificaciones.py). En desarrollo: Mailpit.
+    smtp_host: str | None = None
+    smtp_port: int = 1025
+    smtp_tls: bool = False
+    smtp_usuario: str | None = None
+    smtp_password: str | None = None
+    smtp_remitente: str = "accesos@facturas.localhost"
     # Cookie `Secure`: obligatoria con HTTPS en producción; en http://127.0.0.1 no se enviaría.
     cookie_segura: bool = False
 

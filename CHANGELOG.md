@@ -21,6 +21,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   (`catalog.restaurantes`, migración 032); RLS forzado por tenant y sucursal con cuenta sin privilegios
   (migración 033); alcance de las personas por restaurante completo o por sucursal. El 8010 ya usa el data plane
   propio de `GRUPO-DEMO`. Detalle en `docs/seguridad/fase5-data-plane.md`.
+- **Ciclo de vida de las personas (fase 6):** ficha de persona en "Usuarios y accesos" con roles y alcance
+  (agregar, cambiar, revocar), autenticadores, sesiones, recuperación asistida con espera de 24 h, suspensión,
+  reactivación, baja verificada y reingreso; sección "Mi cuenta" para agregar o dar de baja autenticadores;
+  bloqueo tras entrar con código de recuperación hasta registrar una passkey nueva (método de acceso por `amr`);
+  avisos por correo y tarea de inactividad. Detalle en `docs/seguridad/fase6-ciclo-vida.md`.
 
 ## [0.1.0] - 2026-10-18
 

@@ -97,3 +97,51 @@ def test_destino_externo_no_se_sigue():
     assert _destino_seguro("//sitio-ajeno.example") == "/#/"
     assert _destino_seguro("/\sitio-ajeno.example") == "/#/"
     assert _destino_seguro("/#/finanzas") == "/#/finanzas"
+
+
+# --------------------------------------------------------------------------- #
+# Fase 6 con Keycloak real
+
+
+def test_codigo_de_recuperacion_obliga_a_registrar_passkey_nueva(base_control, tenant, persona_enrolada, control_app):
+    from autenticador_software import AutenticadorSoftware
+
+    sin_passkey = Navegador(configuracion(), AutenticadorSoftware(origin=configuracion()["IDENTIDAD_URL"]))
+    codigo = persona_enrolada["navegador"].codigos_recuperacion[0]
+    with TestClient(app) as cliente:
+        salida = cliente.get("/auth/entrar", follow_redirects=False)
+        datos = sin_passkey.autenticar_desde(salida.headers["location"], persona_enrolada["correo"], usar="codigo", codigo=codigo)
+        regreso = cliente.get("/auth/callback", params=datos, follow_redirects=False)
+        assert regreso.status_code == 303 and regreso.headers["location"].startswith("/auth/registrar-autenticador")
+
+        sesion = cliente.get("/api/v1/seguridad/sesion").json()
+        assert sesion["metodo_auth"] == "CODIGO_RECUPERACION" and sesion["requiere_nuevo_autenticador"] is True
+        bloqueado = cliente.get("/api/v1/catalogos")
+        assert bloqueado.status_code == 403 and bloqueado.json()["detail"]["codigo"] == "AUTENTICADOR_PENDIENTE"
+
+        # Registro de la passkey nueva con la sesión del proveedor (kc_action).
+        hacia_registro = cliente.get(regreso.headers["location"], follow_redirects=False)
+        sin_passkey.completar_invitacion(hacia_registro.headers["location"], etiqueta="passkey nueva")
+        q = {k: v[0] for k, v in parse_qs(urlparse(sin_passkey.ultimo_callback).query).items()}
+        assert q.get("kc_action_status") == "success"
+        assert cliente.get("/auth/callback", params=q, follow_redirects=False).status_code == 303
+
+        assert cliente.get("/api/v1/seguridad/sesion").json()["requiere_nuevo_autenticador"] is False
+        assert cliente.get("/api/v1/catalogos").status_code == 200
+
+    tipos = [e["tipo"] for e in control_app.execute(
+        "SELECT tipo FROM control.auditoria WHERE actor_id = %s ORDER BY id", (persona_enrolada["identidad"]["id"],)
+    ).fetchall()]
+    assert "USO_CODIGO_RECUPERACION" in tipos and "AUTENTICADOR_REGISTRADO" in tipos
+
+
+def test_tras_la_baja_la_passkey_ya_no_entra(base_control, tenant, persona_enrolada, fabrica):
+    _, _, director = fabrica.persona("CONSULTORA_DIRECTOR")
+    with TestClient(app) as cliente:
+        cliente.cookies.set(COOKIE, director)
+        r = cliente.post(f"/api/v1/seguridad/identidades/{persona_enrolada['identidad']['id']}/baja",
+                         json={"motivo": "Prueba de baja de punta a punta"})
+        assert r.status_code == 200 and r.json()["verificacion"] == "ok", r.text
+        assert r.json()["autenticadores_revocados"] >= 1
+    intento = Navegador(configuracion(), persona_enrolada["navegador"].autenticador).iniciar_sesion(persona_enrolada["correo"])
+    assert intento.code is None

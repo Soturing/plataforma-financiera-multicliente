@@ -17,6 +17,7 @@ from psycopg import Connection
 from app.config import Settings, get_settings
 from app.database import get_connection
 from app.seguridad.api import router as seguridad_router
+from app.seguridad.ciclo_vida import router as ciclo_vida_router
 from app.seguridad.autorizacion import actor_o, autorizar_ruta
 from app.errors import DomainError
 from app.weekly_report import build_weekly_purchase_report
@@ -148,6 +149,7 @@ app = FastAPI(
     dependencies=[Depends(autorizar_ruta)],
 )
 app.include_router(seguridad_router)
+app.include_router(ciclo_vida_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 

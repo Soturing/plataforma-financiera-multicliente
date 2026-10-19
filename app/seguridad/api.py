@@ -10,6 +10,7 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 from typing import Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -18,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.errors import DomainError
-from app.seguridad import control, keycloak_admin, oidc, sesiones
+from app.seguridad import control, keycloak_admin, notificaciones, oidc, sesiones
 from app.seguridad.politica import ROLES_GLOBALES, ROLES_PRIVILEGIADOS
 
 router = APIRouter()
@@ -62,7 +63,8 @@ def _poner_cookie(respuesta, token: str) -> None:
 # Inicio y cierre de sesión
 
 
-def _iniciar(proposito: str, destino: str, *, sesion_id: UUID | None = None, asignacion: UUID | None = None, correo: str | None = None) -> RedirectResponse:
+def _iniciar(proposito: str, destino: str, *, sesion_id: UUID | None = None, asignacion: UUID | None = None,
+             correo: str | None = None, accion_kc: str | None = None) -> RedirectResponse:
     verifier, challenge = oidc.nuevo_pkce()
     state, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     with control.conexion_control() as conn:
@@ -72,7 +74,8 @@ def _iniciar(proposito: str, destino: str, *, sesion_id: UUID | None = None, asi
                VALUES (%s, %s, %s, %s, %s, %s, %s)""",
             (state, verifier, nonce, _destino_seguro(destino), proposito, sesion_id, asignacion),
         )
-    url = oidc.url_autorizacion(state=state, nonce=nonce, challenge=challenge, reautenticar=proposito == "REAUTENTICAR", correo=correo)
+    url = oidc.url_autorizacion(state=state, nonce=nonce, challenge=challenge, reautenticar=proposito == "REAUTENTICAR",
+                                correo=correo, accion_kc=accion_kc)
     return RedirectResponse(url, status_code=303)
 
 
@@ -88,8 +91,19 @@ def reautenticar(request: Request, destino: str = "/#/", asignacion: UUID | None
     return _iniciar("REAUTENTICAR", destino, sesion_id=ctx.sesion_id, asignacion=asignacion, correo=ctx.correo)
 
 
+@router.get("/auth/registrar-autenticador", include_in_schema=False)
+def registrar_autenticador(request: Request, destino: str = "/#/accesos"):
+    """Agrega un autenticador desde la sesión (segunda passkey, llave de respaldo o reemplazo tras recuperación)."""
+    with control.conexion_control() as conn:
+        ctx = _contexto(request, conn)
+    privilegiada = any(o["privilegiado"] for o in ctx.opciones)
+    accion = "webauthn-register" if privilegiada else "webauthn-register-passwordless"
+    return _iniciar("REGISTRAR_AUTENTICADOR", destino, sesion_id=ctx.sesion_id, correo=ctx.correo, accion_kc=accion)
+
+
 @router.get("/auth/callback", include_in_schema=False)
-def callback(request: Request, state: str | None = None, code: str | None = None, error: str | None = None):
+def callback(request: Request, state: str | None = None, code: str | None = None, error: str | None = None,
+             kc_action_status: str | None = None):
     if not state:
         # Regreso desde el enlace de invitación: el autenticador quedó registrado.
         return RedirectResponse("/#/?acceso=registrado", status_code=303)
@@ -103,6 +117,7 @@ def callback(request: Request, state: str | None = None, code: str | None = None
         return RedirectResponse("/#/?acceso=cancelado", status_code=303)
 
     verificada = oidc.canjear_codigo(code, solicitud["verifier"], solicitud["nonce"])
+    metodo = verificada.metodo
     ip, agente = _ip(request), request.headers.get("user-agent")
     with control.conexion_control() as conn:
         tenant = _tenant(conn)
@@ -110,25 +125,44 @@ def callback(request: Request, state: str | None = None, code: str | None = None
         if ident is None or ident["estado"] not in ("ACTIVA", "REGISTRO_PENDIENTE", "INVITADA"):
             control.registrar_evento(
                 conn, "INICIO_SESION", "RECHAZO", actor_id=ident["id"] if ident else None,
-                actor_tipo="PERSONA" if ident else "ANONIMO", tenant_id=tenant["id"], ip=ip,
+                actor_tipo="PERSONA" if ident else "ANONIMO", tenant_id=tenant["id"], ip=ip, metodo_auth=metodo,
                 politica="IDENTIDAD_NO_ACTIVA" if ident else "SIN_IDENTIDAD",
                 detalle={"estado": ident["estado"] if ident else None},
             )
-            destino = "/#/?acceso=sin_acceso"
-            return RedirectResponse(destino, status_code=303)
+            return RedirectResponse("/#/?acceso=sin_acceso", status_code=303)
         if ident["estado"] != "ACTIVA":
-            conn.execute("UPDATE control.identidades SET estado = 'ACTIVA', actualizado_en = now() WHERE id = %s", (ident["id"],))
-            control.registrar_evento(conn, "ACTIVACION", actor_id=ident["id"], tenant_id=tenant["id"], ip=ip,
-                                     metodo_auth="LLAVE_FISICA" if verificada.llave_fisica else "PASSKEY")
+            conn.execute(
+                "UPDATE control.identidades SET estado = 'ACTIVA', requiere_nuevo_autenticador = false, actualizado_en = now() "
+                "WHERE id = %s",
+                (ident["id"],),
+            )
+            control.registrar_evento(conn, "ACTIVACION", actor_id=ident["id"], tenant_id=tenant["id"], ip=ip, metodo_auth=metodo)
+            notificaciones.a_persona(conn, ident, "ACTIVACION")
+            notificaciones.a_directores(conn, "ACTIVACION_DIRECTOR", excepto=ident["id"], nombre=ident["nombre"])
             ident = control.identidad(conn, ident["id"])
+        if metodo == "CODIGO_RECUPERACION":
+            # Recuperación normal (§10.1): entra, pero debe registrar una passkey nueva antes de operar.
+            conn.execute("UPDATE control.identidades SET requiere_nuevo_autenticador = true WHERE id = %s", (ident["id"],))
+            control.registrar_evento(conn, "USO_CODIGO_RECUPERACION", actor_id=ident["id"], tenant_id=tenant["id"], ip=ip,
+                                     metodo_auth=metodo, sensibilidad="ALERTA")
+            notificaciones.a_persona(conn, ident, "CODIGO_RECUPERACION")
 
-        metodo = "LLAVE_FISICA" if verificada.llave_fisica else "PASSKEY"
-        if solicitud["proposito"] == "REAUTENTICAR":
+        if solicitud["proposito"] in ("REAUTENTICAR", "REGISTRAR_AUTENTICADOR"):
             ctx, _ = sesiones.resolver(conn, request.cookies.get(sesiones.COOKIE), tenant)
             if ctx is None or ctx.sesion_id != solicitud["sesion_id"] or ctx.identidad_id != ident["id"]:
-                control.registrar_evento(conn, "REAUTENTICACION", "RECHAZO", actor_id=ident["id"], tenant_id=tenant["id"],
+                control.registrar_evento(conn, solicitud["proposito"], "RECHAZO", actor_id=ident["id"], tenant_id=tenant["id"],
                                          ip=ip, metodo_auth=metodo, politica="SESION_DISTINTA")
                 return RedirectResponse("/#/?acceso=sesion_distinta", status_code=303)
+            if solicitud["proposito"] == "REGISTRAR_AUTENTICADOR":
+                exito = kc_action_status == "success"
+                control.registrar_evento(conn, "AUTENTICADOR_REGISTRADO", "EXITO" if exito else "RECHAZO",
+                                         actor_id=ident["id"], rol=ctx.rol, tenant_id=tenant["id"], sesion_id=ctx.sesion_id,
+                                         ip=ip, metodo_auth=metodo, sensibilidad="C2", detalle={"estado": kc_action_status})
+                if exito:
+                    conn.execute("UPDATE control.identidades SET requiere_nuevo_autenticador = false WHERE id = %s", (ident["id"],))
+                    notificaciones.a_persona(conn, ident, "AUTENTICADOR_REGISTRADO")
+                destino = solicitud["destino"] + ("" if exito else "?acceso=registro_cancelado")
+                return RedirectResponse(destino, status_code=303)
             sesiones.registrar_reautenticacion(conn, ctx.sesion_id, verificada.autenticado_en, verificada.llave_fisica)
             control.registrar_evento(conn, "REAUTENTICACION", actor_id=ident["id"], rol=ctx.rol, tenant_id=tenant["id"],
                                      sesion_id=ctx.sesion_id, ip=ip, metodo_auth=metodo)
@@ -145,7 +179,7 @@ def callback(request: Request, state: str | None = None, code: str | None = None
             return RedirectResponse("/#/?acceso=sin_asignacion", status_code=303)
         token, sesion_id = sesiones.crear_sesion(
             conn, tenant_id=tenant["id"], identidad=ident, asignaciones=asignaciones, llave_fisica=verificada.llave_fisica,
-            autenticado_en=verificada.autenticado_en, idp_sid=verificada.idp_sid, ip=ip, agente=agente,
+            metodo=metodo, autenticado_en=verificada.autenticado_en, idp_sid=verificada.idp_sid, ip=ip, agente=agente,
         )
         control.registrar_evento(conn, "INICIO_SESION", actor_id=ident["id"], tenant_id=tenant["id"], sesion_id=sesion_id,
                                  ip=ip, metodo_auth=metodo, detalle={"agente": (agente or "")[:120]})
@@ -153,7 +187,10 @@ def callback(request: Request, state: str | None = None, code: str | None = None
         if len(disponibles) == 1:
             _cambiar_contexto(conn, sesion_id, ident["id"], disponibles[0]["id"], tenant,
                               llave_fisica=verificada.llave_fisica, ip=ip, rol_anterior=None)
-    respuesta = RedirectResponse(solicitud["destino"], status_code=303)
+    destino = solicitud["destino"]
+    if metodo == "CODIGO_RECUPERACION":
+        destino = "/auth/registrar-autenticador?destino=" + quote(destino, safe="")
+    respuesta = RedirectResponse(destino, status_code=303)
     _poner_cookie(respuesta, token)
     return respuesta
 
