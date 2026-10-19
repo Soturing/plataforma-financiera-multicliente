@@ -9,6 +9,7 @@ from pypdf import PdfWriter
 from app.config import get_settings
 from app.main import app
 from app.repository import register_uuid_duplicates
+from apoyo_archivos import JPEG
 from apoyo_db import conexion_pruebas
 
 
@@ -163,7 +164,7 @@ def test_pipeline_upload_process_approve():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "DEMO-A", "creada_por": "pytest"},
-            files={"archivo": ("factura.jpg", BytesIO(b"demo-image"), "image/jpeg")},
+            files={"archivo": ("factura.jpg", BytesIO(JPEG + b"demo-image"), "image/jpeg")},
         )
         assert created.status_code == 201, created.text
         invoice_id = created.json()["id"]
@@ -193,7 +194,7 @@ def test_pipeline_upload_process_approve():
 
         source_file = client.get(f"/api/v1/facturas/{invoice_id}/archivo")
         assert source_file.status_code == 200
-        assert source_file.content == b"demo-image"
+        assert source_file.content == JPEG + b"demo-image"
 
         review_item = client.get(f"/api/v1/facturas/{invoice_id}")
         assert review_item.status_code == 200, review_item.text
@@ -243,7 +244,7 @@ def test_approved_invoice_can_be_edited_without_duplicate_analytics():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "DEMO-A", "creada_por": "pytest"},
-            files={"archivo": ("factura-editable.jpg", BytesIO(b"editable-invoice"), "image/jpeg")},
+            files={"archivo": ("factura-editable.jpg", BytesIO(JPEG + b"editable-invoice"), "image/jpeg")},
         )
         assert created.status_code == 201, created.text
         invoice_id = created.json()["id"]
@@ -338,7 +339,7 @@ def test_correction_allows_provider_branch_reference_and_optional_amounts():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "DEMO-A", "creada_por": "pytest"},
-            files={"archivo": ("factura-total.jpg", BytesIO(b"demo-total-only"), "image/jpeg")},
+            files={"archivo": ("factura-total.jpg", BytesIO(JPEG + b"demo-total-only"), "image/jpeg")},
         )
         assert created.status_code == 201, created.text
         invoice_id = created.json()["id"]
@@ -400,7 +401,7 @@ def test_reviewer_can_override_no_expense_classification():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "DEMO-A", "creada_por": "pytest"},
-            files={"archivo": ("clasificacion-manual.jpg", BytesIO(b"manual-expense"), "image/jpeg")},
+            files={"archivo": ("clasificacion-manual.jpg", BytesIO(JPEG + b"manual-expense"), "image/jpeg")},
         )
         assert created.status_code == 201, created.text
         invoice_id = created.json()["id"]

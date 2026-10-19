@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.main import app
 from app.periodification import allocate_period, weeks_for_period
+from apoyo_archivos import JPEG
 from apoyo_db import conexion_pruebas
 
 
@@ -66,7 +67,7 @@ def test_fixed_invoice_is_applied_retroactively_across_the_month():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "DEMO-A", "creada_por": "pytest-periodificacion"},
-            files={"archivo": ("imss.jpg", BytesIO(b"periodification-test"), "image/jpeg")},
+            files={"archivo": ("imss.jpg", BytesIO(JPEG + b"periodification-test"), "image/jpeg")},
         )
         assert created.status_code == 201, created.text
         invoice_id = created.json()["id"]

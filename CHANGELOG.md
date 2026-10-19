@@ -46,6 +46,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Firma real de los archivos subidos (§3.6.4):** además del tipo que declara el cliente, se comprueban los
+  primeros bytes (PDF, JPEG, PNG, WEBP, XML, XLSX y texto para CSV/TSV); un ejecutable, un HTML o un ZIP con otro
+  nombre se rechazan con 415 y no quedan en disco. El archivo se guarda con la extensión que corresponde a su
+  contenido, no con la del nombre que manda el cliente (`app/firma_archivos.py`). ClamAV sigue pendiente.
+
 - **Límites de recursos (§3.6.7):** límite de peticiones por IP y por minuto (1200 en general, 30 en `/auth/*`,
   configurable con `FACTURAS_LIMITE_PETICIONES_POR_MINUTO` y `FACTURAS_LIMITE_ACCESO_POR_MINUTO`, 0 lo apaga) con
   respuesta 429 y `Retry-After`; el catálogo de proveedores y los archivos de ventas se leen por partes y se

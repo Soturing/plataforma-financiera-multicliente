@@ -6,6 +6,7 @@ from fastapi import UploadFile
 
 from app.config import Settings
 from app.errors import DomainError
+from app.firma_archivos import EXTENSION_POR_TIPO, tipo_esperado, verificar
 
 
 async def read_limited(file: UploadFile, limit: int, message: str) -> bytes:
@@ -31,6 +32,16 @@ async def save_upload(file: UploadFile, settings: Settings) -> tuple[Path, str, 
 
     if file.content_type in {"application/xml", "text/xml"} and extension != ".xml":
         raise DomainError("El archivo XML debe tener extensión .xml.", 415)
+    primer = await file.read(1024 * 1024)
+    if primer:
+        # El contenido manda: la extensión con la que se guarda sale del tipo detectado,
+        # no del nombre que envía el cliente.
+        try:
+            detectado = verificar(primer, tipo_esperado(file.content_type, extension) or "")
+        except DomainError:
+            await file.close()
+            raise
+        extension = EXTENSION_POR_TIPO[detectado]
     destination = settings.upload_dir / f"{uuid4()}{extension}"
     destination.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
@@ -38,7 +49,8 @@ async def save_upload(file: UploadFile, settings: Settings) -> tuple[Path, str, 
 
     try:
         with destination.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
+            chunk = primer
+            while chunk:
                 size += len(chunk)
                 if size > settings.max_upload_bytes:
                     raise DomainError(
@@ -46,6 +58,7 @@ async def save_upload(file: UploadFile, settings: Settings) -> tuple[Path, str, 
                     )
                 digest.update(chunk)
                 output.write(chunk)
+                chunk = await file.read(1024 * 1024)
     except Exception:
         destination.unlink(missing_ok=True)
         raise

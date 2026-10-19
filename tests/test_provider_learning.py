@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from app.config import get_settings
 from app.main import app
 from app.provider_catalog import find_provider, normalize_alias, normalize_provider_rfc
+from apoyo_archivos import JPEG
 from apoyo_db import conexion_pruebas
 
 
@@ -167,7 +168,7 @@ def test_human_correction_can_remember_alias_and_retire_transient_provider():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "DEMO-A", "creada_por": TEST_ACTOR},
-            files={"archivo": ("alias.jpg", BytesIO(b"demo"), "image/jpeg")},
+            files={"archivo": ("alias.jpg", BytesIO(JPEG + b"demo"), "image/jpeg")},
         )
         invoice_id = created.json()["id"]
         processed = client.post(
@@ -213,7 +214,7 @@ def test_por_asignar_blocks_approval():
         created = client.post(
             "/api/v1/facturas",
             data={"sucursal_clave": "POR-ASIGNAR", "creada_por": TEST_ACTOR},
-            files={"archivo": ("sin-sucursal.jpg", BytesIO(b"demo"), "image/jpeg")},
+            files={"archivo": ("sin-sucursal.jpg", BytesIO(JPEG + b"demo"), "image/jpeg")},
         )
         assert created.status_code == 201, created.text
         invoice_id = created.json()["id"]
