@@ -250,3 +250,12 @@ Estado: adoptada (2026-10-19). Detalle en `docs/roadmap-producto.md` §2.3 y §3
 - **Una factura con correcciones no se borra:** `audit.correcciones` referencia facturas y revisiones con `ON DELETE RESTRICT` (antes `CASCADE` borraba el historial). La bandeja responde 409.
 - **Auditoría de sólo anexado también para la propietaria:** triggers en `audit.correcciones`, `audit.cambios_catalogo` y `audit.documentos_eliminados` (y sin `DELETE` en `audit.aprendizajes`). La única salida es que la propietaria declare `audit.purga = 'on'` en su sesión (limpieza de pruebas y futura política de retención).
 - **Tolerancia en centavos** del futuro `CHECK` de totales: flexible hasta tener datos de producción; se fija después.
+
+## D-028 — El acceso es seguro por defecto; el modo abierto es sólo una opción de desarrollo
+
+Estado: adoptada (2026-10-19). Reemplaza el carácter transitorio de D-022.
+
+- `FACTURAS_ACCESO_MODO` vale `seguro` si no se declara: toda ruta de datos exige sesión.
+- El modo abierto (`abierto`) sigue disponible, pero hay que escribirlo a propósito en el `.env` de desarrollo. Con `FACTURAS_ENVIRONMENT=produccion` la aplicación se niega a arrancar en modo abierto.
+- Las pruebas fijan `abierto` en `tests/conftest.py` para ejercer las rutas de datos sin sesión; las de modo seguro lo activan en su propia fixture.
+- Consecuencia práctica: un `.env` sin esa variable deja de abrir el 8010 sin sesión. Para revisar pantallas sin iniciar sesión, agregar `FACTURAS_ACCESO_MODO=abierto` al `.env` de desarrollo.
