@@ -46,6 +46,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
+  `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
+  de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
+
 - **Firma real de los archivos subidos (§3.6.4):** además del tipo que declara el cliente, se comprueban los
   primeros bytes (PDF, JPEG, PNG, WEBP, XML, XLSX y texto para CSV/TSV); un ejecutable, un HTML o un ZIP con otro
   nombre se rechazan con 415 y no quedan en disco. El archivo se guarda con la extensión que corresponde a su

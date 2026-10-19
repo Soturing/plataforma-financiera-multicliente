@@ -73,7 +73,7 @@ Crear el entorno e instalar dependencias:
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
 
 Iniciar el servidor:

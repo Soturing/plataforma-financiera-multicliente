@@ -1,0 +1,6 @@
+# Herramientas de desarrollo, pruebas y análisis. NO van a la imagen de producción.
+# Instalar con:  pip install -r requirements-dev.txt  (incluye lo de requirements.txt).
+-r requirements.txt
+pytest==9.0.3
+pip-audit==2.10.1
+bandit==1.9.4
