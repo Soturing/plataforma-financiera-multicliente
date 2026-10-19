@@ -73,7 +73,7 @@ La diferencia de fondo: Copilot propone aislar con `organizacion_id` y RLS sobre
 | 1 | Crítica | `organizacion_id` y RLS | **Resuelto de otra forma** (base por cliente y RLS con `FORCE` por tenant y sucursal, migración 033). | Nada en el esquema. Ver el punto 16 sobre la base de desarrollo. | 4 |
 | 2 | Crítica | Roles `app_rw` / `migrator` / `readonly` | **Resuelto en su mayoría.** `tenant_owner` (migraciones) y `tenant_runtime` (app, sin propiedad ni `BYPASSRLS`); `REVOKE CREATE ON SCHEMA public`. | Un rol de sólo lectura para reportes, si llega a hacer falta. | 8 |
 | 3 | Crítica | Identidad guardada como texto libre | **Abierto.** Hay 28 columnas `*_por text` (`creado_por`, `revisada_por`, `eliminado_por`, `aprobada_por`, etc.). Las identidades viven en el plano de control, que es otra base, así que no se puede poner una FK directa. | Guardar el ID estable de la identidad (UUID del plano de control) junto a la etiqueta y llenarlo siempre desde la sesión. Va de la mano con el hallazgo de seguridad 3. | 8 |
-| 4 | Crítica | Auditoría que se puede modificar; `CASCADE` sobre datos financieros | **Parcial; hueco confirmado.** En el data plane, `tenant_runtime` sólo puede insertar en `audit.*` (salvo `UPDATE` en `inferencias_sucursal`), y el plano de control sí tiene triggers de sólo anexado. Pero `audit.correcciones` tiene `ON DELETE CASCADE` hacia `core.facturas` y `core.revisiones` (`001_initial_schema.sql:208-209`): **al borrar una factura se borra su historial de correcciones**, sin importar los permisos del rol. Tampoco hay borrado lógico en `core.facturas`. | Cambiar esas FK a `RESTRICT` (o `SET NULL` conservando el ID en texto), borrado lógico en facturas, trigger que rechace `UPDATE`/`DELETE` en `audit.*` también para la propietaria. | 8 |
+| 4 | Crítica | Auditoría que se puede modificar; `CASCADE` sobre datos financieros | **Parcial; hueco confirmado.** En el data plane, `tenant_runtime` sólo puede insertar en `audit.*` (salvo `UPDATE` en `inferencias_sucursal`), y el plano de control sí tiene triggers de sólo anexado. Pero `audit.correcciones` tiene `ON DELETE CASCADE` hacia `core.facturas` y `core.revisiones` (`001_initial_schema.sql:208-209`): **al borrar una factura se borra su historial de correcciones**, sin importar los permisos del rol. Tampoco hay borrado lógico en `core.facturas`. | Cambiar esas FK a `RESTRICT` (decidido: no se borra una factura con correcciones), borrado lógico en facturas, trigger que rechace `UPDATE`/`DELETE` en `audit.*` también para la propietaria. | 8 |
 | 5 | Alta | Rutas absolutas en `archivo_url` / `evidencia_url` | **Abierto** (`archivo_url`, `archivo_original_url`, `evidencia_url`). | `storage_key` relativo al volumen del cliente. Coincide con el hallazgo de seguridad 9. | 6 |
 | 6 | Alta | Migraciones sin control de versión; `DELETE`/`DROP` dentro de migraciones | **Parcial.** Los data planes llevan la tabla `migraciones_aplicadas`. El compose de desarrollo sigue montando archivos sueltos. Hay `DROP TABLE` y borrados de datos en migraciones (p. ej. `024` elimina `centros_costo`, D-017). | Un solo aplicador (ya en §3.7) y una regla: migración destructiva sólo con respaldo previo y prueba de restauración. | 7 |
 | 7 | Alta | Estados en enums rígidos | **Abierto, prioridad baja.** Siete enums (`estado_factura`, `estado_trabajo_ocr`, etc.). | Trigger de transiciones válidas para `estado_factura`; cambiar a tablas de catálogo sólo si los estados empiezan a variar por cliente. | 8 |
@@ -159,7 +159,7 @@ Criterio de salida: cada punto con su prueba automática y las amenazas afectada
 
 Sale de la revisión de base de datos (§2.3). En orden de prioridad:
 
-1. **Proteger la auditoría** (punto 4): quitar el `ON DELETE CASCADE` de `audit.correcciones`, borrado lógico en `core.facturas` y trigger de sólo anexado en `audit.*` también para la propietaria. Se hace junto con el punto 1 de §3.6 (actor y borrado), porque tocan el mismo flujo.
+1. **Proteger la auditoría** (punto 4): cambiar a `ON DELETE RESTRICT` las FK de `audit.correcciones`, borrado lógico en `core.facturas` y trigger de sólo anexado en `audit.*` también para la propietaria. Se hace junto con el punto 1 de §3.6 (actor y borrado), porque tocan el mismo flujo.
 2. **Identidad estable** (punto 3): una columna con el ID de identidad del plano de control al lado de cada `*_por`, llenada desde la sesión.
 3. **Timeouts** de `tenant_runtime` (punto 16).
 4. **Reglas financieras** (punto 8): primero una consulta que cuente cuántas filas actuales romperían cada regla; luego `CHECK`, triggers diferidos de sumas y `EXCLUDE`.
@@ -184,7 +184,10 @@ Criterio de salida: cada cambio con su prueba, y ninguna migración destructiva 
 
 - Si los 100 MB por archivo son el tope correcto, o si se baja para PDF e imágenes y se deja alto sólo para lotes.
 - Plazo de retención del borrado lógico y quién puede recuperar o purgar.
-- Tolerancia en centavos para el `CHECK` de totales (los CFDI redondean por concepto y el total puede diferir por centavos).
-- Al borrar una factura: `RESTRICT` (no deja borrar si tiene correcciones) o `SET NULL` (deja borrar y conserva el historial).
+
+Decididas el 2026-10-19:
+
+- **Tolerancia en centavos del `CHECK` de totales:** queda flexible por ahora (parámetro ajustable, no fijo en el esquema) y se ajusta con datos reales una vez en producción.
+- **Borrado de facturas con correcciones:** se **impide** (`ON DELETE RESTRICT` en `audit.correcciones`). Una factura con historial de correcciones no se borra.
 - Si ClamAV entra ya o después del pentest (consume memoria; el equipo de desarrollo tiene poca).
 - Las de la hoja anterior siguen en pie: modelo de llave física, VPS y región (Hetzner Ashburn o AWS mx-central-1), SMTP transaccional y nueva definición de reportes.
