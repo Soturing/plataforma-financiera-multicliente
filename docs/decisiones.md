@@ -259,3 +259,12 @@ Estado: adoptada (2026-10-19). Reemplaza el carácter transitorio de D-022.
 - El modo abierto (`abierto`) sigue disponible, pero hay que escribirlo a propósito en el `.env` de desarrollo. Con `FACTURAS_ENVIRONMENT=produccion` la aplicación se niega a arrancar en modo abierto.
 - Las pruebas fijan `abierto` en `tests/conftest.py` para ejercer las rutas de datos sin sesión; las de modo seguro lo activan en su propia fixture.
 - Consecuencia práctica: un `.env` sin esa variable deja de abrir el 8010 sin sesión. Para revisar pantallas sin iniciar sesión, agregar `FACTURAS_ACCESO_MODO=abierto` al `.env` de desarrollo.
+
+## D-029 — Identidad estable por trigger, copiada de la sesión
+
+Estado: adoptada (2026-10-19). Detalle en `docs/roadmap-producto.md` §2.3 punto 3.
+
+- Las identidades viven en el plano de control (otra base), así que no hay clave foránea: cada columna `*_por` (texto, la etiqueta que se muestra) gana un `*_por_id uuid` con el identificador estable.
+- La app declara `app.identidad` en las opciones de la conexión (`app/database.py`) y el trigger `seguridad.completar_identidad` lo copia al escribir o al cambiar la etiqueta. El valor nunca viaja en el cuerpo de la petición.
+- Sin sesión el `_id` queda vacío (no se inventa) y las filas anteriores no se rellenan. `core.trabajos_ocr.reservado_por` se excluye: identifica a un worker, no a una persona.
+- `tenant_runtime` recibe `statement_timeout` de 120 s e `idle_in_transaction_session_timeout` de 60 s (`tenants crear_roles` y `tenants migrar`).
