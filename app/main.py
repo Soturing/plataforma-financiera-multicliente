@@ -21,6 +21,7 @@ from app.seguridad.ciclo_vida import router as ciclo_vida_router
 from app.seguridad.autorizacion import actor_o, autorizar_ruta
 from app.endurecimiento import CABECERAS_SEGURIDAD, disposicion, documentacion_activa
 from app.errors import DomainError
+from app.firma_archivos import CABECERA_MINIMA, TIPO_POR_MIME, verificar as verificar_firma
 from app.limite_tasa import LimitadorVentana, ip_del_cliente
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
@@ -867,6 +868,11 @@ async def import_providers(
     if not (archivo.filename or "").lower().endswith((".xlsx", ".csv", ".tsv")):
         raise DomainError("El catálogo debe ser XLSX, CSV o TSV.", 415)
     content = await read_limited(archivo, 10 * 1024 * 1024, "El catálogo supera el límite de 10 MB.")
+    es_xlsx = (archivo.filename or "").lower().endswith(".xlsx")
+    if es_xlsx:
+        verificar_firma(content[:CABECERA_MINIMA], "xlsx")
+    else:
+        verificar_firma(content[:4096], "texto")
     rows = parse_provider_file(archivo.filename or "catalogo.xlsx", content)
     preview = preview_provider_import(conn, rows)
     if not confirmar:
@@ -1161,6 +1167,7 @@ async def preview_sales_file(
     content = await read_limited(archivo, 12 * 1024 * 1024, "El archivo supera el límite de 12 MB.")
     if not content:
         raise DomainError("El archivo está vacío.", 422)
+    verificar_firma(content[:CABECERA_MINIMA], "xlsx" if is_xlsx else TIPO_POR_MIME[archivo.content_type])
     branch = conn.execute(
         """
         SELECT id, clave, nombre, restaurante
