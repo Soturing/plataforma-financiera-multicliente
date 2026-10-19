@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,9 +28,10 @@ class Settings(BaseSettings):
     )
 
     # Acceso seguro (docs/seguridad/plan-implementacion.md, fases 2–4).
-    # "abierto": la app funciona sin sesión como antes; quien inicia sesión opera
-    # con sus permisos. "seguro": toda ruta de datos exige sesión.
-    acceso_modo: Literal["abierto", "seguro"] = "abierto"
+    # "seguro" (por defecto, D-028): toda ruta de datos exige sesión. "abierto": la app
+    # funciona sin sesión como antes; sólo para desarrollo local, con
+    # FACTURAS_ACCESO_MODO=abierto escrito a propósito. En producción no se admite.
+    acceso_modo: Literal["abierto", "seguro"] = "seguro"
     control_database_url: str | None = None
     app_url: str = "http://127.0.0.1:8010"
     oidc_issuer: str = "http://localhost:8180/realms/facturas"
@@ -54,6 +56,12 @@ class Settings(BaseSettings):
     cookie_segura: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FACTURAS_", extra="ignore")
+
+    @model_validator(mode="after")
+    def _produccion_exige_acceso_seguro(self) -> "Settings":
+        if self.environment == "produccion" and self.acceso_modo != "seguro":
+            raise ValueError("En producción FACTURAS_ACCESO_MODO debe ser 'seguro'.")
+        return self
 
 
 @lru_cache

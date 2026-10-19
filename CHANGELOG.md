@@ -46,6 +46,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **El acceso es seguro por defecto (D-028):** `FACTURAS_ACCESO_MODO` vale `seguro` si no se declara, y con
+  `FACTURAS_ENVIRONMENT=produccion` la app no arranca en modo abierto. Para revisar pantallas sin sesión en
+  desarrollo hay que escribir `FACTURAS_ACCESO_MODO=abierto` en el `.env`.
+
 - Cabeceras de seguridad en cada respuesta de la aplicación: Content-Security-Policy (sólo scripts del propio
   origen), `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy` y
   `Permissions-Policy` (`app/endurecimiento.py`).
