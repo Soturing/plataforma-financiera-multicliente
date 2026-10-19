@@ -33,14 +33,14 @@ Estados: **Resuelto** (ya está en la rama de seguridad), **Parcial** (resuelto 
 |---|------|---------------------|-------------|--------------|--------|
 | 1 | Crítica | Sin autenticación ni autorización | **Parcial.** Keycloak, sesiones en el plano de control y política por ruta (`app/seguridad/politica.py`) están hechos, pero `acceso_modo` vale `"abierto"` por defecto (`app/config.py:32`): sin sesión la app sigue respondiendo como antes. | Cambiar el valor por defecto a `"seguro"` y retirar el modo abierto antes de producción. | 1 |
 | 2 | Crítica | Sin aislamiento multicliente | **Resuelto.** Base, archivos y workers propios por cliente; `tenant_id` y RLS con `FORCE` (migración 033); prueba con dos tenants. | Llevar las pruebas de fuga a la integración continua (§3.7). Red propia por cliente entre proxy y app (ya pendiente). | 4 |
-| 3 | Alta | Acciones destructivas con identidad falsificable | **Parcial; hueco confirmado.** Existe `actor_o()` para tomar el autor de la sesión, pero `DELETE /api/v1/facturas` y el descarte de duplicados todavía usan el valor del navegador (`data.eliminado_por` en `app/main.py:434` y `:1273`, `data.descartado_por` en `:343`). Además borran archivos físicos. | Usar el actor de la sesión, quitar esos campos de la petición, borrado lógico con retención y reautenticación (nivel C2). | 6 |
-| 4 | Alta | XML sin protección XXE / *billion laughs* | **Abierto.** `xml.etree` en `app/text_processing.py` y `app/provider_catalog.py`. | `defusedxml` y tope al tamaño descomprimido del XLSX (bomba zip). | 6 |
+| 3 | Alta | Acciones destructivas con identidad falsificable | **Resuelto con sesión** (corrección del 2026-10-19: el diagnóstico anterior de «hueco confirmado» era incorrecto). `autorizar_ruta` reemplaza todos los campos `*_por` del JSON por la identidad de la sesión (`_sustituir_autor`) y los formularios usan `actor_o()`; lo comprueba `test_autorizacion.py`. Sólo en modo abierto, sin sesión, el autor sigue llegando del navegador. Los archivos físicos se siguen borrando. | Salir del modo abierto (3.1). Hecho: prueba que falla si aparece un `*_por` anidado o un formulario sin `actor_o`. Pendiente: reautenticación C2 y retención de archivos borrados. | 6 |
+| 4 | Alta | XML sin protección XXE / *billion laughs* | **Resuelto** (etapa 1). El CFDI ya rechazaba `DOCTYPE`/`ENTITY`; ahora también el XLSX de proveedores (`app/xml_seguro.py`), y ambos XLSX (proveedores y ventas) comprueban el tamaño descomprimido antes de abrirse (50 MB). Se descartó `defusedxml`: sin versiones nuevas desde 2021, y Python 3.12 ya no resuelve entidades externas. | — | 6 |
 | 5 | Alta | Validación de archivos sólo por `Content-Type` | **Abierto.** `app/storage.py` confía en el tipo y la extensión que manda el cliente. | Comprobar la firma real del archivo; antivirus (ClamAV) en el worker. | 6 |
 | 6 | Alta | Sin límite de tasa ni de recursos | **Parcial.** Lo del `Popen` por factura ya se resolvió: ahora hay una cola en PostgreSQL con workers permanentes (030). Límite unificado en 100 MB (`config.py` y `.env.example` coinciden). Siguen abiertos: el límite de peticiones, la carga de ventas que lee el archivo entero en memoria (`main.py:823` y `:1118`) y los límites de CPU y memoria de los workers. | Límite de peticiones en Caddy o con `slowapi`, ventas leídas por partes, `cpus`/`mem_limit` en el compose del servidor, cuota por cliente. Revisar si 100 MB es el tope correcto. | 6 |
 | 7 | Media | Faltan cabeceras; archivos servidos `inline` | **Parcial.** El Caddyfile del servidor ya pone HSTS, `nosniff`, `X-Frame-Options`, `Referrer-Policy` y `Permissions-Policy`. Falta CSP; en local no hay cabeceras; los archivos subidos se siguen sirviendo `inline` (`main.py:333`, `:485`, `:656`). | CSP estricta, middleware de cabeceras en la app y `attachment` para todo lo que no sea PDF o imagen. | 6 |
 | 8 | Media | Uso extenso de `innerHTML` | **Abierto, y peor:** 84 usos en `app.js` (148 KB). | Revisar cada uso, pasar a `textContent`, ESLint con regla de seguridad. CSP como red de seguridad. | 6 / 7 |
 | 9 | Media | Rutas absolutas en la base; nombre original en `Content-Disposition` | **Abierto.** | Guardar rutas relativas al directorio del cliente y limpiar `filename`. | 6 |
-| 10 | Media | Sin cifrado en reposo; PostgreSQL en `0.0.0.0:5432` | **Parcial.** gocryptfs por cliente y respaldos cifrados en S3 con Object Lock (D-025, D-026). Pero el `compose.yaml` de desarrollo sigue publicando `${POSTGRES_PORT:-5432}:5432` en todas las interfaces (línea 9). | Publicarlo sólo en `127.0.0.1`. TLS hacia la base si alguna vez sale del host. | 6 |
+| 10 | Media | Sin cifrado en reposo; PostgreSQL en `0.0.0.0:5432` | **Resuelto** (etapa 1). gocryptfs por cliente y respaldos cifrados (D-025, D-026); el `compose.yaml` de desarrollo ya publica PostgreSQL sólo en `127.0.0.1`. | TLS hacia la base si alguna vez sale del host. | 6 |
 | 11 | Media | Una sola cuenta de base con privilegios de dueño | **Resuelto en el data plane.** La cuenta de ejecución no es dueña de las tablas ni tiene `BYPASSRLS` (033, `db/control/000_roles.sh`). | Asegurar que la base compartida antigua (5432/5434) nunca llegue a producción. | 1 |
 | 12 | Media | `except Exception` genérico; sin logging estructurado | **Parcial.** La bitácora de seguridad (sólo anexado, encadenada por hash) cubre accesos y acciones sensibles. Falta logging JSON con ID de correlación; quedan unos 15 `except Exception`. | Logging estructurado y el tablero de alertas (ya pendiente en el frente 1). | 7 |
 | 13 | Baja | SQL dinámico con f-strings (hoy con lista blanca) | **Abierto.** | `psycopg.sql.Identifier` y una prueba de la lista blanca. | 7 |
@@ -73,7 +73,7 @@ La diferencia de fondo: Copilot propone aislar con `organizacion_id` y RLS sobre
 | 1 | Crítica | `organizacion_id` y RLS | **Resuelto de otra forma** (base por cliente y RLS con `FORCE` por tenant y sucursal, migración 033). | Nada en el esquema. Ver el punto 16 sobre la base de desarrollo. | 4 |
 | 2 | Crítica | Roles `app_rw` / `migrator` / `readonly` | **Resuelto en su mayoría.** `tenant_owner` (migraciones) y `tenant_runtime` (app, sin propiedad ni `BYPASSRLS`); `REVOKE CREATE ON SCHEMA public`. | Un rol de sólo lectura para reportes, si llega a hacer falta. | 8 |
 | 3 | Crítica | Identidad guardada como texto libre | **Abierto.** Hay 28 columnas `*_por text` (`creado_por`, `revisada_por`, `eliminado_por`, `aprobada_por`, etc.). Las identidades viven en el plano de control, que es otra base, así que no se puede poner una FK directa. | Guardar el ID estable de la identidad (UUID del plano de control) junto a la etiqueta y llenarlo siempre desde la sesión. Va de la mano con el hallazgo de seguridad 3. | 8 |
-| 4 | Crítica | Auditoría que se puede modificar; `CASCADE` sobre datos financieros | **Parcial; hueco confirmado.** En el data plane, `tenant_runtime` sólo puede insertar en `audit.*` (salvo `UPDATE` en `inferencias_sucursal`), y el plano de control sí tiene triggers de sólo anexado. Pero `audit.correcciones` tiene `ON DELETE CASCADE` hacia `core.facturas` y `core.revisiones` (`001_initial_schema.sql:208-209`): **al borrar una factura se borra su historial de correcciones**, sin importar los permisos del rol. Tampoco hay borrado lógico en `core.facturas`. | Cambiar esas FK a `RESTRICT` (decidido: no se borra una factura con correcciones), borrado lógico en facturas, trigger que rechace `UPDATE`/`DELETE` en `audit.*` también para la propietaria. | 8 |
+| 4 | Crítica | Auditoría que se puede modificar; `CASCADE` sobre datos financieros | **Resuelto** (etapa 1, migración 034). `audit.correcciones` pasa a `ON DELETE RESTRICT` (una factura con correcciones no se borra; la bandeja responde 409 con un mensaje claro). Triggers de sólo anexado en `correcciones`, `cambios_catalogo` y `documentos_eliminados` (y sin `DELETE` en `aprendizajes`) también para la propietaria; la única salida es `audit.purga=on` declarada por la propietaria (limpieza de pruebas y futura retención). | Borrado lógico de facturas: se pasa a la etapa 2; hoy sólo se borran documentos pendientes y cada borrado queda en `audit.documentos_eliminados`. | 8 |
 | 5 | Alta | Rutas absolutas en `archivo_url` / `evidencia_url` | **Abierto** (`archivo_url`, `archivo_original_url`, `evidencia_url`). | `storage_key` relativo al volumen del cliente. Coincide con el hallazgo de seguridad 9. | 6 |
 | 6 | Alta | Migraciones sin control de versión; `DELETE`/`DROP` dentro de migraciones | **Parcial.** Los data planes llevan la tabla `migraciones_aplicadas`. El compose de desarrollo sigue montando archivos sueltos. Hay `DROP TABLE` y borrados de datos en migraciones (p. ej. `024` elimina `centros_costo`, D-017). | Un solo aplicador (ya en §3.7) y una regla: migración destructiva sólo con respaldo previo y prueba de restauración. | 7 |
 | 7 | Alta | Estados en enums rígidos | **Abierto, prioridad baja.** Siete enums (`estado_factura`, `estado_trabajo_ocr`, etc.). | Trigger de transiciones válidas para `estado_factura`; cambiar a tablas de catálogo sólo si los estados empiezan a variar por cliente. | 8 |
@@ -134,9 +134,9 @@ Sin cambios. Conviene decidirlo antes de partir `app.js` (3.7) y antes de reempl
 
 Agrupa los hallazgos de Copilot que siguen abiertos o parciales. En orden de prioridad:
 
-1. **Actor y borrado** (hallazgo 3): `actor_o()` en todos los endpoints que reciben `eliminado_por`, `descartado_por` o campos parecidos; quitar esos campos de los modelos de petición; borrado lógico de facturas y archivos con un plazo de retención; reautenticación C2. Agregar una prueba que falle si una ruta acepta el autor desde el cuerpo de la petición.
-2. **Puerto de PostgreSQL** en `127.0.0.1` en `compose.yaml` (hallazgo 10). Es un cambio de una línea.
-3. **XML seguro** con `defusedxml` y tope de descompresión del XLSX (hallazgo 4).
+1. ~~**Actor y borrado** (hallazgo 3)~~ **Hecho en lo que tocaba**: el autor ya salía de la sesión; se añadió la prueba de que ningún `*_por` escapa a la sustitución. Queda para la etapa 2: reautenticación C2 en borrados y retención de archivos borrados.
+2. ~~**Puerto de PostgreSQL** en `127.0.0.1`~~ **Hecho** (hallazgo 10).
+3. ~~**XML seguro**~~ **Hecho** con `app/xml_seguro.py` (hallazgo 4).
 4. **Validación por firma real** del archivo; ClamAV en el worker OCR (hallazgo 5).
 5. **Cabeceras y CSP**: CSP en el Caddyfile y en un middleware local; `attachment` para lo que no sea PDF o imagen (hallazgo 7).
 6. **Docs y OpenAPI** apagados en producción (hallazgo 14).
@@ -148,7 +148,7 @@ Criterio de salida: cada punto con su prueba automática y las amenazas afectada
 
 ### 3.7 Calidad e ingeniería (nuevo)
 
-1. **Integración continua** en GitHub Actions: `pytest` (incluidas las pruebas de aislamiento con dos tenants), `ruff`, `pip-audit`, `bandit`, `gitleaks`. Semgrep si se puede.
+1. ~~**Integración continua**~~ **Hecho** en `.github/workflows/ci.yml`: suite completa contra un data plane desechable con las 34 migraciones y RLS (`scripts/preparar_base_pruebas.py`) y gitleaks, que bloquean; `pip-audit` y `bandit` sólo informan hasta corregir lo existente. Falta `ruff` (la base de código no está formateada todavía) y Semgrep.
 2. `requirements-dev.txt` separado y versiones con hash.
 3. Un solo aplicador de migraciones en desarrollo y en servidor.
 4. Pruebas nuevas: archivos maliciosos, carga (24 000 documentos por semana y 14 usuarios simultáneos, según `docs/cola-ocr.md`), cobertura y redondeo de dinero.
@@ -159,7 +159,7 @@ Criterio de salida: cada punto con su prueba automática y las amenazas afectada
 
 Sale de la revisión de base de datos (§2.3). En orden de prioridad:
 
-1. **Proteger la auditoría** (punto 4): cambiar a `ON DELETE RESTRICT` las FK de `audit.correcciones`, borrado lógico en `core.facturas` y trigger de sólo anexado en `audit.*` también para la propietaria. Se hace junto con el punto 1 de §3.6 (actor y borrado), porque tocan el mismo flujo.
+1. ~~**Proteger la auditoría**~~ **Hecho** (migración 034 y `tests/test_auditoria_solo_anexado.py`). El borrado lógico de facturas pasa a la etapa 2.
 2. **Identidad estable** (punto 3): una columna con el ID de identidad del plano de control al lado de cada `*_por`, llenada desde la sesión.
 3. **Timeouts** de `tenant_runtime` (punto 16).
 4. **Reglas financieras** (punto 8): primero una consulta que cuente cuántas filas actuales romperían cada regla; luego `CHECK`, triggers diferidos de sumas y `EXCLUDE`.
@@ -169,12 +169,21 @@ Sale de la revisión de base de datos (§2.3). En orden de prioridad:
 
 Criterio de salida: cada cambio con su prueba, y ninguna migración destructiva sin respaldo previo comprobado.
 
+### Avance de la etapa 1 (2026-10-19)
+
+Rama `claude/roadmap-audit-integration-2dcf8d`, montada sobre la del PR #2 (la etapa 0, fusionar en `main`, sigue pendiente).
+
+- Migración **034**: auditoría de sólo anexado y `RESTRICT` en correcciones. Comando nuevo `python -m app.plataforma.tenants migrar --clave <CLIENTE>` para aplicar migraciones a un cliente ya dado de alta (antes sólo se aplicaban en el alta). **Aún no se ha aplicado a GRUPO-DEMO ni a GRUPO-PRUEBA-B.**
+- XML y XLSX seguros, PostgreSQL de desarrollo sólo en `127.0.0.1`, prueba del autor sustituible.
+- Integración continua lista; empieza a correr en cuanto la rama se suba a GitHub.
+- Suite contra una base desechable: 174 pasan y 75 se omiten (Keycloak y plano de control). La única que falla, `test_plataforma_no_lee_politicas_globales_ni_borra_claves`, necesita el token de OpenBao que está en la otra copia de trabajo; no depende de estos cambios.
+
 ## 4. Orden de ejecución propuesto
 
 | Etapa | Contenido | Por qué en este orden |
 |-------|-----------|-----------------------|
 | **0. Integrar** | 3.0: fusionar el PR #2 en `main` y archivar el legado. | Sin esto, toda auditoría y todo cambio se hace sobre código viejo. |
-| **1. Inmediato** (cambios chicos y de alto impacto) | 3.6 puntos 1 a 3 (actor y borrado, puerto 5432, `defusedxml`), 3.8 punto 1 (auditoría sin cascada y borrado lógico) y 3.7 punto 1 (integración continua). | Cierra los dos huecos confirmados (autor tomado del navegador e historial que se borra en cascada) y deja una red de pruebas para lo que sigue. |
+| **1. Inmediato** (cambios chicos y de alto impacto) | 3.6 puntos 1 a 3 (actor y borrado, puerto 5432, `defusedxml`), 3.8 punto 1 (auditoría sin cascada y borrado lógico) y 3.7 punto 1 (integración continua). | Cierra el hueco confirmado del historial que se borra en cascada y deja una red de pruebas para lo que sigue. |
 | **2. Antes de producción** | 3.6 puntos 4 a 7; 3.1 salir del modo abierto; 3.7 puntos 2 a 5; 3.8 puntos 2 a 5. | Son la condición para desplegar y para que el pentest valga la pena. |
 | **3. Despliegue** | 3.1: VPS, bucket, guía de despliegue, SMTP real, red por cliente; luego el pentest externo. | Ya con la aplicación endurecida. |
 | **4. Producto** | Frentes 2, 4 (marca y plantilla de alta) y 3 cuando llegue su definición. | Dependen del modelo de tenant ya listo y del modo seguro. |
