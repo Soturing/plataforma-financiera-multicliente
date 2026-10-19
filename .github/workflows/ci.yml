@@ -1,0 +1,67 @@
+# Integración continua (roadmap §3.7.1).
+# - pruebas: suite completa contra un data plane desechable con RLS (bloquea).
+# - secretos: gitleaks sobre todo el historial (bloquea).
+# - escaneo: pip-audit y bandit; por ahora sólo informan, hasta corregir lo que ya existe.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dp_admin
+          POSTGRES_PASSWORD: dp_admin_ci
+          POSTGRES_DB: facturas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dp_admin -d facturas"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      FACTURAS_OCR_AUTOSTART_WORKERS: "false"
+      FACTURAS_UPLOAD_DIR: tmp/uploads-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Base desechable con todas las migraciones
+        run: python scripts/preparar_base_pruebas.py --puerto 5432 --admin-password dp_admin_ci
+      # tests/identidad necesita Keycloak; las pruebas del plano de control se omiten solas sin su base.
+      - run: python -m pytest -q -rfE --ignore=tests/identidad
+
+  secretos:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.2 git /repo --redact --verbose
+
+  escaneo:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit bandit
+      - name: Dependencias con vulnerabilidades conocidas
+        run: pip-audit -r requirements.txt
+      - name: Análisis estático de Python
+        run: bandit -q -r app -x app/static
