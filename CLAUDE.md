@@ -7,7 +7,7 @@ Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-027) y
 ## Stack
 - Python + FastAPI (`app/main.py`), PostgreSQL 15+ (docker `compose.yaml`), front estático sin build (`app/static/`: `index.html`, `app.js`, `styles.css`).
 - OCR local: PDF digital por capa de texto primero; PaddleOCR solo como respaldo (`app/ocr/`).
-- Migraciones SQL versionadas en `db/migrations/` (001–034). Nueva migración = siguiente número, nunca editar las existentes. A un cliente ya dado de alta se le aplican con `python -m app.plataforma.tenants migrar --clave <CLIENTE>`.
+- Migraciones SQL versionadas en `db/migrations/` (001–035). Nueva migración = siguiente número, nunca editar las existentes. A un cliente ya dado de alta se le aplican con `python -m app.plataforma.tenants migrar --clave <CLIENTE>`.
 - Tests: `tests/` (pytest) y `db/tests/001_pipeline_smoke.sql`. CI en `.github/workflows/ci.yml` (base desechable con `scripts/preparar_base_pruebas.py`).
 - La auditoría (`audit.*`) es de sólo anexado (D-027): para limpiar datos de prueba, la conexión de `tests/apoyo_db.py` ya declara `audit.purga=on`.
 

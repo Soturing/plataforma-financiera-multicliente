@@ -15,7 +15,7 @@ from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 
 from app.config import get_settings
-from app.database import rls_verificado, sucursales_actuales
+from app.database import identidad_actual, rls_verificado, sucursales_actuales
 from app.seguridad import control, sesiones
 from app.seguridad.politica import MODULOS_SIEMPRE_CON_SESION, RUTAS, Nivel, permitido
 
@@ -73,6 +73,7 @@ async def _sustituir_autor(request: Request, etiqueta: str) -> None:
 
 async def autorizar_ruta(request: Request) -> None:
     actor_actual.set(None)
+    identidad_actual.set(None)
     sucursales_actuales.set("*")
     ruta = request.scope.get("route")
     if not isinstance(ruta, APIRoute):
@@ -171,5 +172,6 @@ async def autorizar_ruta(request: Request) -> None:
     if ctx is not None:
         request.state.contexto = ctx
         actor_actual.set(ctx.etiqueta)
+        identidad_actual.set(str(ctx.identidad_id))
         sucursales_actuales.set(alcance_rls)
         await _sustituir_autor(request, ctx.etiqueta)

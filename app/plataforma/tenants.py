@@ -214,6 +214,16 @@ def levantar_base(clave: str, env: dict[str, str]) -> None:
     raise AltaError("La base del cliente no respondió a tiempo")
 
 
+# Topes de la cuenta de la app (roadmap §3.8.3): una consulta atascada o una transacción
+# olvidada no deben acaparar la base de un cliente. La propietaria (migraciones) no los tiene.
+LIMITES_RUNTIME = (("statement_timeout", "120s"), ("idle_in_transaction_session_timeout", "60s"))
+
+
+def fijar_limites_runtime(c: psycopg.Connection) -> None:
+    for parametro, valor in LIMITES_RUNTIME:
+        c.execute(sql.SQL("ALTER ROLE tenant_runtime SET {} = {}").format(sql.Identifier(parametro), sql.Literal(valor)))
+
+
 def crear_roles(env: dict[str, str]) -> None:
     """Propietaria para migraciones y cuenta de la app sin privilegios (arquitectura-aislamiento §8)."""
     with conectar(url_base(env, "dp_admin", "DP_ADMIN_PASSWORD"), autocommit=True) as c:
@@ -230,6 +240,7 @@ def crear_roles(env: dict[str, str]) -> None:
         c.execute("REVOKE ALL ON DATABASE facturas FROM PUBLIC")
         c.execute("GRANT CONNECT ON DATABASE facturas TO tenant_owner, tenant_runtime")
         c.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+        fijar_limites_runtime(c)
 
 
 # --------------------------------------------------------------------------- #
@@ -497,8 +508,15 @@ def desplegar(args: argparse.Namespace) -> int:
 
 def migrar(args: argparse.Namespace) -> int:
     """Aplica las migraciones pendientes de un cliente ya dado de alta (como propietaria)."""
-    aplicadas = aplicar_migraciones(entorno(args.clave.upper()))
+    env = entorno(args.clave.upper())
+    aplicadas = aplicar_migraciones(env)
     print("Migraciones aplicadas: " + (", ".join(aplicadas) if aplicadas else "ninguna; la base estaba al día"))
+    try:  # los topes de tenant_runtime los fija el superusuario del contenedor, no la propietaria
+        with conectar(url_base(env, "dp_admin", "DP_ADMIN_PASSWORD"), autocommit=True) as c:
+            fijar_limites_runtime(c)
+        print("Topes de tenant_runtime al día (statement_timeout 120 s, idle_in_transaction 60 s).")
+    except Exception as exc:  # noqa: BLE001
+        print(f"AVISO: no se pudieron fijar los topes de tenant_runtime ({exc}).", file=sys.stderr)
     return 0
 
 

@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from contextvars import ContextVar
 from functools import lru_cache
+from uuid import UUID
 
 import psycopg
 from psycopg import Connection
@@ -12,6 +13,9 @@ from app.config import get_settings
 # de catalog.sucursales separados por coma. Lo fija la autorización de cada
 # petición; los procesos del sistema (workers OCR) trabajan con todas.
 sucursales_actuales: ContextVar[str] = ContextVar("sucursales_actuales", default="*")
+# Identidad estable (UUID del plano de control) de quien opera la petición. La base la copia junto
+# a cada columna `*_por` (migración 035); sin sesión (workers, modo abierto) queda vacía.
+identidad_actual: ContextVar[str | None] = ContextVar("identidad_actual", default=None)
 
 
 def conectar(database_url: str | None = None, *, sucursales: str | None = None, **kwargs) -> Connection:
@@ -25,6 +29,8 @@ def conectar(database_url: str | None = None, *, sucursales: str | None = None, 
     if any(c.isspace() for c in settings.tenant_clave + alcance):
         raise ValueError("Tenant o alcance inválido")
     opciones = f"-c app.tenant={settings.tenant_clave} -c app.sucursales={alcance or 'ninguna'}"
+    if identidad := identidad_actual.get():
+        opciones += f" -c app.identidad={UUID(identidad)}"
     return psycopg.connect(database_url or settings.database_url, options=opciones, **kwargs)
 
 
