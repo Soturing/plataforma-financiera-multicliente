@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-facturas_app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en el archivo .env local}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/10-initial-schema.sql:ro
@@ -42,6 +42,7 @@ services:
       - ./db/migrations/031_document_page_groups.sql:/docker-entrypoint-initdb.d/41-document-page-groups.sql:ro
       - ./db/migrations/032_restaurantes.sql:/docker-entrypoint-initdb.d/42-restaurantes.sql:ro
       - ./db/migrations/033_rls_tenant_sucursal.sql:/docker-entrypoint-initdb.d/43-rls-tenant-sucursal.sql:ro
+      - ./db/migrations/034_auditoria_solo_anexado.sql:/docker-entrypoint-initdb.d/44-auditoria-solo-anexado.sql:ro
       - ./db/seeds/001_demo_catalogs.sql:/docker-entrypoint-initdb.d/20-demo-catalogs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturas_app} -d ${POSTGRES_DB:-facturas_demo}"]

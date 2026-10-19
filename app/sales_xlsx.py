@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.datetime import from_excel
 
 from app.errors import DomainError
+from app.xml_seguro import verificar_xlsx
 
 
 MONTHS = {
@@ -102,6 +103,7 @@ def _find_header(matrix: list[list[Any]]) -> tuple[int, dict[str, int]]:
 
 
 def parse_sales_xlsx(data: bytes, *, expected_year: int, expected_week: int | None = None) -> dict[str, Any]:
+    verificar_xlsx(data)
     try:
         workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:

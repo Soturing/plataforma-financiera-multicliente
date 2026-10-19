@@ -1,5 +1,9 @@
 """La matriz de permisos y la clasificación de rutas (sin base de datos)."""
+import inspect
+import typing
+
 from fastapi.routing import APIRoute
+from pydantic import BaseModel
 
 from app.main import app
 from app.seguridad.politica import (
@@ -80,3 +84,33 @@ def test_nadie_modifica_ni_elimina_la_auditoria():
     for rol, modulos in MATRIZ.items():
         acciones = modulos.get("AUDITORIA", frozenset())
         assert not acciones & {OPERAR, ELIMINAR, APROBAR, "ADMINISTRAR"}, rol
+
+
+def _campos_autor_anidados(modelo, ruta="", vistos=None):
+    vistos = vistos if vistos is not None else set()
+    if modelo in vistos:
+        return []
+    vistos.add(modelo)
+    hallados = []
+    for nombre, campo in modelo.model_fields.items():
+        for tipo in typing.get_args(campo.annotation) or (campo.annotation,):
+            for interno in typing.get_args(tipo) or (tipo,):
+                if isinstance(interno, type) and issubclass(interno, BaseModel):
+                    hallados += [f"{ruta}{nombre}.{c}" for c in interno.model_fields if c.endswith("_por")]
+                    hallados += _campos_autor_anidados(interno, f"{ruta}{nombre}.", vistos)
+    return hallados
+
+
+def test_el_autor_siempre_se_puede_sustituir_por_el_de_la_sesion():
+    """`_sustituir_autor` sólo reemplaza los `*_por` del primer nivel del JSON y los formularios usan `actor_o`."""
+    faltantes = []
+    for r in app.routes:
+        if not isinstance(r, APIRoute):
+            continue
+        for param in r.dependant.body_params:
+            anotacion = param.field_info.annotation
+            if isinstance(anotacion, type) and issubclass(anotacion, BaseModel):
+                faltantes += [f"{r.path}: {c}" for c in _campos_autor_anidados(anotacion)]
+            elif param.name.endswith("_por") and f"actor_o({param.name})" not in inspect.getsource(r.endpoint):
+                faltantes.append(f"{r.path}: formulario {param.name} sin actor_o")
+    assert faltantes == []

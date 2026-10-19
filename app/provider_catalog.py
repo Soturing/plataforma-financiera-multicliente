@@ -6,10 +6,10 @@ import unicodedata
 import zipfile
 from typing import Any
 from uuid import UUID
-from xml.etree import ElementTree as ET
 
 from psycopg import Connection
 
+from app import xml_seguro
 from app.errors import DomainError
 
 
@@ -448,14 +448,15 @@ def _read_xlsx(data: bytes) -> list[dict[str, str]]:
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     rel_ns = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
     doc_ns = {"d": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
+    xml_seguro.verificar_xlsx(data)
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         shared: list[str] = []
         if "xl/sharedStrings.xml" in archive.namelist():
-            root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            root = xml_seguro.parsear(archive.read("xl/sharedStrings.xml"))
             for item in root.findall("m:si", ns):
                 shared.append("".join(node.text or "" for node in item.iterfind(".//m:t", ns)))
-        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
-        rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        workbook = xml_seguro.parsear(archive.read("xl/workbook.xml"))
+        rels = xml_seguro.parsear(archive.read("xl/_rels/workbook.xml.rels"))
         targets = {rel.attrib["Id"]: rel.attrib["Target"] for rel in rels.findall("r:Relationship", rel_ns)}
         sheets = workbook.find("m:sheets", ns)
         selected = next(
@@ -465,7 +466,7 @@ def _read_xlsx(data: bytes) -> list[dict[str, str]]:
         rel_id = selected.attrib[f"{{{doc_ns['d']}}}id"]
         target = targets[rel_id].lstrip("/")
         sheet_path = target if target.startswith("xl/") else f"xl/{target}"
-        root = ET.fromstring(archive.read(sheet_path))
+        root = xml_seguro.parsear(archive.read(sheet_path))
         matrix: list[list[str]] = []
         for row in root.findall(".//m:sheetData/m:row", ns):
             values: dict[int, str] = {}
