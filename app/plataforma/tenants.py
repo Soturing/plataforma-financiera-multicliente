@@ -95,6 +95,10 @@ def preparar_entorno(clave: str, nombre: str, puerto_db: int, puerto_app: int) -
         "FACTURAS_APP_PORT": str(puerto_app),
         "FACTURAS_UPLOAD_DIR": (RAIZ / "data" / "tenants" / clave / "uploads").as_posix(),
     })
+    # Carpeta que ven los contenedores. En el servidor es la vista descifrada de gocryptfs
+    # (deploy/servidor/archivos.sh la cambia a /srv/facturas/<CLAVE>/archivos).
+    env.setdefault("ARCHIVOS_VISIBLES", env["FACTURAS_UPLOAD_DIR"])
+    env["TENANT_ALIAS"] = clave.lower()
     env["FACTURAS_DATABASE_URL"] = url_base(env, "tenant_runtime", "TENANT_RUNTIME_PASSWORD", puerto_db)
     return env
 
@@ -160,7 +164,9 @@ def crear_usuario_respaldos(usuario: str, password: str) -> None:
         capture_output=True, cwd=RAIZ,
     )
     if r.returncode != 0:
-        raise AltaError(f"No se pudo crear el usuario de respaldos: {r.stderr.decode(errors='replace')[-300:]}")
+        # En el servidor no hay destino local: los respaldos van a S3 (respaldos configurar-destino).
+        print("   Aviso: sin destino local de respaldos; configure el bucket S3 con "
+              "`python -m app.plataforma.respaldos configurar-destino`.", file=sys.stderr)
 
 
 def url_base(env: dict[str, str], usuario: str, clave_password: str, puerto: int | str | None = None) -> str:
@@ -476,6 +482,18 @@ def servir(args: argparse.Namespace) -> int:
         return 0
 
 
+def desplegar(args: argparse.Namespace) -> int:
+    """Levanta la app y los workers del cliente en contenedores (perfil `servidor`)."""
+    clave = args.clave.upper()
+    env = leer_entorno(ruta_entorno(clave))
+    if not env.get("ARCHIVOS_VISIBLES"):
+        raise AltaError(f"{clave} no tiene ARCHIVOS_VISIBLES: monte primero sus archivos (deploy/servidor/archivos.sh)")
+    extra = {"FACTURAS_IMAGEN": args.imagen} if args.imagen else {}
+    docker_compose(clave, "--profile", "servidor", "up", "-d", "app", "workers", env_extra=extra)
+    print(f"{clave}: app y workers en contenedor (imagen {args.imagen or 'facturas-app:sin-ocr'})")
+    return 0
+
+
 def pruebas(args: argparse.Namespace, extra: list[str]) -> int:
     """Corre pytest contra el data plane del cliente: la app con tenant_runtime (RLS) y la
     preparación/limpieza de datos de prueba como propietaria (tests/apoyo_db.py)."""
@@ -505,6 +523,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--puerto", type=int)
     v = sub.add_parser("verificar", help="Ejecuta las pruebas de aislamiento de la base del cliente")
     v.add_argument("--clave", required=True)
+    d = sub.add_parser("desplegar", help="Levanta la app y los workers del cliente en contenedores")
+    d.add_argument("--clave", required=True)
+    d.add_argument("--imagen", help="Imagen del backend (por omisión facturas-app:sin-ocr)")
     m = sub.add_parser("migrar-secretos", help="Mueve las contraseñas de un cliente existente a OpenBao")
     m.add_argument("--clave", required=True)
     p = sub.add_parser("pruebas", help="Corre pytest contra el data plane del cliente (argumentos extra van a pytest)")
@@ -519,6 +540,8 @@ def main(argv: list[str] | None = None) -> int:
             return servir(args)
         if args.comando == "pruebas":
             return pruebas(args, extra)
+        if args.comando == "desplegar":
+            return desplegar(args)
         if args.comando == "migrar-secretos":
             clave = args.clave.upper()
             proteger_secretos(clave, entorno(clave))

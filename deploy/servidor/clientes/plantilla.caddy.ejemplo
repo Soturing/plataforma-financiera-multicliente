@@ -1,0 +1,9 @@
+# Copiar como <cliente>.caddy (p. ej. grupo-demo.caddy) y recargar el proxy:
+#   docker compose -p facturas -f deploy/servidor/control.compose.yaml exec proxy caddy reload --config /etc/caddy/Caddyfile
+grupo-demo.{$DOMINIO} {
+	import cabeceras
+	request_body {
+		max_size 110MB
+	}
+	reverse_proxy grupo-demo-app:8000
+}

@@ -60,10 +60,10 @@ Respaldos y restauraciones quedan en la bitácora del plano de control (`RESPALD
 
 Se propuso cifrar cada archivo dentro de la app (envelope). Al revisar el código hay unos 80 puntos que abren archivos por ruta, incluidos PaddleOCR y PyMuPDF. Cifrar en la app obligaría a dejar copias descifradas temporales en disco, justo lo que se quiere evitar.
 
-**Decisión (D-025):** los archivos se cifrarán **por cliente a nivel de sistema de archivos** (gocryptfs) en el servidor Linux. La clave de cada cliente queda envuelta por `<CLIENTE>-datos` en OpenBao y se monta al arrancar su stack. Es transparente para la app y protege igual en reposo. Se implementa junto con el despliegue del backend en contenedor, porque el montaje ocurre ahí. Mientras tanto, los respaldos de archivos ya salen cifrados por restic.
+**Decisión (D-025):** los archivos se cifran **por cliente a nivel de sistema de archivos** (gocryptfs) en el servidor Linux, con la clave envuelta por `<CLIENTE>-datos` en OpenBao. Implementado y probado en la parte 2: ver [despliegue-servidor.md](despliegue-servidor.md).
 
 ## 5. Pendiente de la fase 7
 
-- Elegir VPS y bucket S3; desplegar el backend y los workers de cada cliente en contenedor, con gocryptfs.
+- Elegir VPS y bucket S3 y ejecutar [despliegue-servidor.md](despliegue-servidor.md).
 - SMTP real para los avisos.
 - Prueba de penetración externa y revisión de las amenazas con riesgo inicial ≥ 12.

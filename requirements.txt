@@ -14,3 +14,5 @@ paddlepaddle==3.3.1
 zxing-cpp==3.1.1
 cryptography==50.0.2
 PyJWT==2.15.1
+numpy==2.3.5
+pillow==13.0.0

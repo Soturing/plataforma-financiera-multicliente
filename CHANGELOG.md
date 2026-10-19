@@ -30,6 +30,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   por cliente; las contraseñas de las bases salen de los archivos privados; respaldos diarios cifrados con restic
   (un repositorio por cliente, destino sólo anexado) y restauración de prueba en una base desechable.
   Detalle en `docs/seguridad/fase7-secretos-respaldos.md`.
+- **Despliegue en servidor (fase 7, D-026):** imagen del backend (`deploy/app/Dockerfile`), app y workers en
+  contenedor por cliente con secretos de OpenBao al arrancar, archivos cifrados con gocryptfs, proxy Caddy con
+  TLS, plano de control de producción, preparación de Ubuntu, arranque tras reinicio y temporizadores de
+  respaldo, restauración e inactividad. Recomendación de VPS y bucket y guía en
+  `docs/seguridad/despliegue-servidor.md`.
+
+### Corregido
+
+- `numpy` y `Pillow` se importaban sin estar declarados en `requirements.txt`.
 
 ## [0.1.0] - 2026-10-18
 

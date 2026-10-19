@@ -1,0 +1,11 @@
+# Prueba de restauración en una base desechable (auditoria-alertas §6: trimestral).
+[Unit]
+Description=Prueba de restauración del cliente %i
+After=docker.service
+
+[Service]
+Type=oneshot
+User=facturas-op
+WorkingDirectory=/opt/facturas
+Environment=SECRETOS_URL=http://127.0.0.1:8200 RESPALDOS_RED=facturas_control
+ExecStart=/opt/facturas/venv/bin/python -m app.plataforma.respaldos probar-restauracion --clave %i

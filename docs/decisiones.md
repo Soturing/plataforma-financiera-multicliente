@@ -231,3 +231,14 @@ Estado: adoptada (2026-10-18). Detalle en `docs/seguridad/fase7-secretos-respald
 - **Respaldos:** restic, un repositorio por cliente, diario (pérdida máxima 24 h). Destino S3 con Object Lock y retención por ciclo de vida del bucket (30 diarios, 12 mensuales, 7 anuales, sujeto a validación legal). En desarrollo, rest-server en modo sólo anexado. Prueba de restauración trimestral en una base desechable.
 - **Archivos en reposo:** cifrado por cliente a nivel de sistema de archivos (gocryptfs) en el servidor, con su clave envuelta por la clave `datos` del cliente. Sustituye la propuesta inicial de cifrar en la app, que habría obligado a dejar copias descifradas temporales en unos 80 puntos de lectura.
 - **VPS:** proveedor por definir; el diseño no depende de uno en particular.
+
+## D-026 — Despliegue: una imagen, un stack por cliente y archivos con gocryptfs
+
+Estado: adoptada (2026-10-18). Detalle en `docs/seguridad/despliegue-servidor.md`.
+
+- Una sola imagen del backend para todos los clientes; cada cliente corre su app y sus workers en su propio proyecto Docker con su base en una red propia.
+- El contenedor obtiene sus secretos de OpenBao al arrancar con la identidad de la app del cliente y borra esa credencial antes de lanzar la app; corre sin privilegios.
+- Los archivos de cada cliente se cifran en el host con gocryptfs; el contenedor sólo recibe la vista descifrada.
+- Caddy es el único servicio público (TLS automático); cada cliente tiene su subdominio y Keycloak sólo expone la pantalla de acceso.
+- Tras un reinicio, una persona abre OpenBao y levanta los clientes (`deploy/servidor/arrancar.sh`).
+- Recomendación de proveedores: VPS en Hetzner (EE. UU. Este) salvo requisito de residencia en México (AWS mx-central-1); respaldos en Backblaze B2 con Object Lock, proveedor distinto al del VPS.

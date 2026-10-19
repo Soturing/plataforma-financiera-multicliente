@@ -106,14 +106,19 @@ path "transit/keys/*" { capabilities = ["create", "read", "update"] }
 path "transit/keys/+/rotate" { capabilities = ["update"] }
 path "transit/encrypt/*" { capabilities = ["update"] }
 path "secret/data/tenants/*" { capabilities = ["create", "read", "update"] }
+path "secret/data/plataforma/*" { capabilities = ["create", "read", "update"] }
 path "secret/metadata/tenants/*" { capabilities = ["read", "list"] }
 path "sys/seal-status" { capabilities = ["read"] }
+# Token raíz temporal: además de este token exige 2 de 3 llaves de desbloqueo.
+path "sys/generate-root-token/*" { capabilities = ["create", "read", "update", "delete", "sudo"] }
 """
 
 
 def politica_app(clave: str) -> str:
     return f"""
 path "secret/data/tenants/{clave}/app" {{ capabilities = ["read"] }}
+path "secret/data/tenants/{clave}/archivos" {{ capabilities = ["read"] }}
+path "secret/data/plataforma/app" {{ capabilities = ["read"] }}
 path "transit/encrypt/{clave}-datos" {{ capabilities = ["update"] }}
 path "transit/decrypt/{clave}-datos" {{ capabilities = ["update"] }}
 path "transit/datakey/plaintext/{clave}-datos" {{ capabilities = ["update"] }}
@@ -155,6 +160,40 @@ def inicializar(*, desarrollo: bool) -> dict:
     if desarrollo:
         (PRIVADO / "token-plataforma").write_text(plataforma, encoding="utf-8")
     return {"llaves": llaves, "token_plataforma": plataforma}
+
+
+def raiz_temporal(llaves: list[str], *, ruta: str = "sys/generate-root-token", token: str | None = None) -> Bao:
+    """Token raíz temporal: token de plataforma + 2 de 3 llaves. Debe revocarse al terminar.
+
+    `ruta="sys/generate-root"` (sin autenticación) sólo sirve si el listener lo habilita
+    temporalmente: procedimiento de recuperación documentado por OpenBao."""
+    bao = Bao(token=token if token is not None else token_plataforma())
+    def datos(r: dict) -> dict:  # el endpoint autenticado responde dentro de "data"
+        return r.get("data") or r
+
+    if datos(bao._req("GET", f"{ruta}/attempt")).get("started"):
+        bao._req("DELETE", f"{ruta}/attempt")  # intento abandonado: se cancela y se reinicia
+    intento = datos(bao._req("POST", f"{ruta}/attempt", json_body={}))
+    nonce, otp = intento["nonce"], intento["otp"]
+    resultado = {}
+    for llave in llaves:
+        resultado = datos(bao._req("POST", f"{ruta}/update", json_body={"key": llave, "nonce": nonce}))
+        if resultado.get("complete"):
+            break
+    if not resultado.get("complete"):
+        raise SecretosError("Se necesitan 2 llaves de desbloqueo válidas.")
+    cifrado = base64.b64decode(resultado["encoded_token"] + "=" * (-len(resultado["encoded_token"]) % 4))
+    token = bytes(a ^ b for a, b in zip(cifrado, otp.encode())).decode()
+    return Bao(bao.url, token)
+
+
+def actualizar_politicas(llaves: list[str], *, ruta: str = "sys/generate-root-token") -> None:
+    """Aplica la política `plataforma` vigente en el código y revoca el token raíz temporal."""
+    root = raiz_temporal(llaves, ruta=ruta, token=None if ruta == "sys/generate-root-token" else "")
+    try:
+        root._req("POST", "sys/policies/acl/plataforma", json_body={"policy": POLITICA_PLATAFORMA})
+    finally:
+        root._req("POST", "auth/token/revoke-self")
 
 
 def token_plataforma() -> str:
@@ -219,6 +258,30 @@ def secretos_app(clave: str, role_id: str, secret_id: str) -> dict:
     return Bao().login_approle(role_id, secret_id).leer(f"tenants/{clave}/app")
 
 
+CLAVES_PLATAFORMA = (
+    "FACTURAS_CONTROL_DATABASE_URL", "FACTURAS_OIDC_CLIENT_SECRET", "FACTURAS_IDP_ADMIN_CLIENT_SECRET",
+    "FACTURAS_SMTP_USUARIO", "FACTURAS_SMTP_PASSWORD",
+)
+
+
+def guardar_plataforma(valores: dict[str, str]) -> list[str]:
+    """Secretos compartidos que necesita la app de cada cliente (plano de control, OIDC, SMTP)."""
+    datos = {k: v for k, v in valores.items() if k in CLAVES_PLATAFORMA and v}
+    plataforma().escribir("plataforma/app", datos)
+    return sorted(datos)
+
+
+def secretos_arranque(clave: str, role_id: str, secret_id: str) -> dict[str, str]:
+    """Todo lo que el contenedor de la app necesita, con la identidad de la app del cliente."""
+    bao = Bao().login_approle(role_id, secret_id)
+    propios = bao.leer(f"tenants/{clave}/app")
+    try:
+        compartidos = bao.leer("plataforma/app")
+    except SecretosError:
+        compartidos = {}
+    return {**compartidos, "FACTURAS_DATABASE_URL": propios["database_url"]}
+
+
 def secretos_respaldos(clave: str, role_id: str, secret_id: str) -> dict:
     bao = Bao().login_approle(role_id, secret_id)
     datos = bao.leer(f"tenants/{clave}/respaldos")
@@ -238,6 +301,12 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("abrir", help="Desbloquea OpenBao tras un reinicio (2 de 3 llaves)")
     a.add_argument("--desde-archivo", action="store_true", help="Lee las llaves de config/secretos/private (sólo local)")
     sub.add_parser("estado", help="Muestra si OpenBao está inicializado y abierto")
+    p = sub.add_parser("actualizar-politicas", help="Aplica la política de plataforma (token raíz temporal con 2 llaves)")
+    p.add_argument("--desde-archivo", action="store_true", help="Lee las llaves de config/secretos/private (sólo local)")
+    p.add_argument("--recuperacion", action="store_true",
+                   help="Usa el endpoint sin autenticación (sólo con el listener habilitado temporalmente)")
+    g = sub.add_parser("guardar-plataforma", help="Copia a OpenBao los secretos compartidos de un archivo .env")
+    g.add_argument("--desde", default=".env")
     r = sub.add_parser("rotar", help="Rota la clave de un cliente (las versiones anteriores siguen descifrando)")
     r.add_argument("--clave", required=True)
     r.add_argument("--uso", choices=["datos", "respaldos"], required=True)
@@ -256,6 +325,20 @@ def main(argv: list[str] | None = None) -> int:
                 llaves = [getpass.getpass(f"Llave de desbloqueo {n} de 2: ") for n in (1, 2)]
             estado = Bao().abrir(llaves)
             print("Abierto" if not estado.get("sealed") else f"Sigue sellado ({estado.get('progress')}/{estado.get('t')})")
+        elif args.comando == "actualizar-politicas":
+            if args.desde_archivo:
+                llaves = json.loads((PRIVADO / "llaves-desbloqueo.json").read_text(encoding="utf-8"))[:2]
+            else:
+                llaves = [getpass.getpass(f"Llave de desbloqueo {n} de 2: ") for n in (1, 2)]
+            actualizar_politicas(llaves, ruta="sys/generate-root" if args.recuperacion else "sys/generate-root-token")
+            print("Política de plataforma actualizada; el token raíz temporal fue revocado.")
+        elif args.comando == "guardar-plataforma":
+            valores = {}
+            for linea in Path(args.desde).read_text(encoding="utf-8").splitlines():
+                if "=" in linea and not linea.lstrip().startswith("#"):
+                    k, v = linea.split("=", 1)
+                    valores[k.strip()] = v.strip()
+            print("Guardados en OpenBao:", guardar_plataforma(valores))
         elif args.comando == "rotar":
             print(f"Nueva versión de {args.clave}-{args.uso}: {plataforma().rotar(f'{args.clave}-{args.uso}')}")
         else:

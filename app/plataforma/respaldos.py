@@ -51,10 +51,14 @@ def _credenciales(clave: str) -> dict:
 def _restic(cred: dict, *args: str, entrada: bytes | None = None, montajes: tuple[str, ...] = ()) -> bytes:
     """Ejecuta restic en un contenedor efímero; los secretos viajan por variables de entorno, no por argumentos."""
     comando = ["docker", "run", "--rm", "-i", "--network", _red(), "-e", "RESTIC_REPOSITORY", "-e", "RESTIC_PASSWORD"]
+    # Destino S3: credenciales propias del cliente, limitadas a su prefijo del bucket.
+    s3 = {k: cred[k.lower()] for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION") if cred.get(k.lower())}
+    for k in s3:
+        comando += ["-e", k]
     for m in montajes:
         comando += ["-v", m]
     comando += [RESTIC, *args]
-    entorno = {**os.environ, "RESTIC_REPOSITORY": cred["repositorio"], "RESTIC_PASSWORD": cred["password_repositorio"]}
+    entorno = {**os.environ, **s3, "RESTIC_REPOSITORY": cred["repositorio"], "RESTIC_PASSWORD": cred["password_repositorio"]}
     r = subprocess.run(comando, input=entrada, capture_output=True, env=entorno)
     if r.returncode != 0:
         raise RespaldoError(f"restic {args[0]} falló: {r.stderr.decode(errors='replace')[-400:]}")
@@ -106,6 +110,17 @@ def respaldar(clave: str) -> dict:
     }
     _registrar("RESPALDO", clave, **resumen)
     return resumen
+
+
+def configurar_destino(clave: str, repositorio: str, *, access_key_id: str, secret_access_key: str, region: str) -> None:
+    """Cambia el destino del cliente a S3 (Object Lock). La contraseña del repositorio no cambia."""
+    bao = secretos.plataforma()
+    actual = bao.leer(f"tenants/{clave}/respaldos")
+    actual.update({
+        "repositorio": repositorio, "destino": "S3 con Object Lock",
+        "aws_access_key_id": access_key_id, "aws_secret_access_key": secret_access_key, "aws_default_region": region,
+    })
+    bao.escribir(f"tenants/{clave}/respaldos", actual)
 
 
 def listar(clave: str) -> list[dict]:
@@ -191,8 +206,19 @@ def main(argv: list[str] | None = None) -> int:
                           ("probar-restauracion", "Restaura el último respaldo en una base temporal y compara"),
                           ("listar", "Lista los respaldos del cliente")):
         sub.add_parser(nombre, help=ayuda).add_argument("--clave", required=True)
+    c = sub.add_parser("configurar-destino", help="Usa un bucket S3 con Object Lock como destino del cliente")
+    c.add_argument("--clave", required=True)
+    c.add_argument("--repositorio", required=True, help="p. ej. s3:https://s3.us-west-004.backblazeb2.com/<bucket>/<cliente>")
+    c.add_argument("--region", default="us-west-004")
     args = parser.parse_args(argv)
     clave = args.clave.upper()
+    if args.comando == "configurar-destino":
+        import getpass
+
+        configurar_destino(clave, args.repositorio, access_key_id=getpass.getpass("Key ID del cliente: "),
+                           secret_access_key=getpass.getpass("Application key: "), region=args.region)
+        print(f"{clave}: destino de respaldos actualizado (credenciales en OpenBao)")
+        return 0
     try:
         if args.comando == "respaldar":
             print(respaldar(clave))

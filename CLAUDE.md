@@ -2,7 +2,7 @@
 
 Plataforma financiera para restaurantes: carga de facturas → OCR → interpretación → revisión humana → factura final → analytics/Excel/PDF. Ya se ha operado en producción: **decisiones simples y salidas rápidas**. No sobre-ingenierizar.
 
-Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-025) y `docs/roadmap-producto.md`. Este archivo es solo un resumen operativo; si algo contradice a esos documentos, mandan ellos.
+Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-026) y `docs/roadmap-producto.md`. Este archivo es solo un resumen operativo; si algo contradice a esos documentos, mandan ellos.
 
 ## Stack
 - Python + FastAPI (`app/main.py`), PostgreSQL 15+ (docker `compose.yaml`), front estático sin build (`app/static/`: `index.html`, `app.js`, `styles.css`).
@@ -39,7 +39,7 @@ docker compose --profile identidad up -d identidad correo-pruebas   # Keycloak :
 ## Seguridad y datos
 - **Nunca versionar datos, entregables ni documentos reales de clientes** (`docs/seguridad/politica-repositorio.md`, hook `.githooks/pre-commit`, `scripts/check_repo_safety.ps1`). Usar solo datos sintéticos.
 - No imprimir ni commitear secretos; `.env` está fuera de git.
-- Usuarios, roles y multi-tenant: **en construcción** según `docs/seguridad/plan-implementacion.md` (D-018 a D-024). Fases 1–6 y la primera parte de la 7 hechas (`app/seguridad/`, `db/control/`, `app/plataforma/`); la app corre en modo abierto (D-022). **Toda ruta nueva debe clasificarse en `app/seguridad/politica.py`** (módulo, acción, nivel y `sucursal_param`) o se deniega y fallan las pruebas. `codex/security-foundation` es legado y no se reutiliza. Bloqueo por pago: diseñado, no implementado. Ya no es una demo de salida rápida: el aislamiento fuerte por cliente (D-016) y las medidas de seguridad **sí se implementan**. Esa arquitectura conviene trabajarla en una sesión con Opus.
+- Usuarios, roles y multi-tenant: **en construcción** según `docs/seguridad/plan-implementacion.md` (D-018 a D-024). Fases 1–7 hechas en local (falta ejecutar el despliegue: `docs/seguridad/despliegue-servidor.md`) (`app/seguridad/`, `db/control/`, `app/plataforma/`); la app corre en modo abierto (D-022). **Toda ruta nueva debe clasificarse en `app/seguridad/politica.py`** (módulo, acción, nivel y `sucursal_param`) o se deniega y fallan las pruebas. `codex/security-foundation` es legado y no se reutiliza. Bloqueo por pago: diseñado, no implementado. Ya no es una demo de salida rápida: el aislamiento fuerte por cliente (D-016) y las medidas de seguridad **sí se implementan**. Esa arquitectura conviene trabajarla en una sesión con Opus.
 - El historial "rápido" del proyecto anterior no justifica atajos nuevos en seguridad.
 
 ## Entorno local (este worktree)
