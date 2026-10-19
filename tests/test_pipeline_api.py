@@ -194,7 +194,7 @@ def test_pipeline_upload_process_approve():
 
         source_file = client.get(f"/api/v1/facturas/{invoice_id}/archivo")
         assert source_file.status_code == 200
-        assert source_file.content == b"demo-image"
+        assert source_file.content == JPEG + b"demo-image"
 
         review_item = client.get(f"/api/v1/facturas/{invoice_id}")
         assert review_item.status_code == 200, review_item.text
