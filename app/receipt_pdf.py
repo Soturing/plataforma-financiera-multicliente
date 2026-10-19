@@ -35,7 +35,6 @@ def render_receipt_pdf(receipt: dict[str, Any]) -> bytes:
         ("Forma de pago", str(receipt["metodo_pago"]).capitalize()),
         ("Restaurante / sucursal", f"{receipt['restaurante']} · {receipt['sucursal']}"),
         ("Clasificación", f"{receipt['categoria']} · {_safe(receipt.get('subcategoria'), 'Sin subcategoría')}"),
-        ("Centro de costo", receipt.get("centro_costo")),
         ("Creado por", f"{receipt['creado_por']} ({receipt['rol_creador']})"),
     ]
     y = 137

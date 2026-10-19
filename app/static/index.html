@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Plataforma Financiera</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260829-9">
+  <link rel="stylesheet" href="/static/styles.css?v=20261018-3">
 </head>
 <body>
   <header class="topbar">
@@ -15,7 +15,8 @@
     <div class="topbar-context"><small>Sección actual</small><strong id="current-section">Operación</strong></div>
     <div class="topbar-actions">
       <span id="system-status" class="status-dot"><i></i> Verificando</span>
-      <label class="user-field"><span>Operador</span><input id="operator" value="capturista-demo" autocomplete="name"></label>
+      <label class="user-field" id="operator-field"><span>Operador</span><input id="operator" value="capturista-demo" autocomplete="name"></label>
+      <div class="session-area" id="session-area" aria-live="polite"></div>
     </div>
   </header>
 
@@ -33,13 +34,22 @@
         <a href="#/analytics" data-route="analytics"><span class="nav-icon">↗</span><span><strong>Análisis</strong><small>Gastos y tendencias</small></span></a>
         <p class="nav-label">Configuración</p>
         <a href="#/catalogos" data-route="catalogs"><span class="nav-icon">⚙</span><span><strong>Catálogos</strong><small>Proveedores y reglas</small></span></a>
+        <a href="#/accesos" data-route="access"><span class="nav-icon">⚿</span><span><strong>Usuarios y accesos</strong><small>Personas, roles y bitácora</small></span></a>
       </nav>
       <div class="sidebar-help"><span>Captura rápida</span><button class="button primary" id="sidebar-upload" type="button">＋ Cargar documentos</button></div>
+      <p class="app-version" id="app-version" aria-label="Versión del sistema"></p>
     </aside>
     <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="Cerrar navegación"></button>
     <main id="app" aria-live="polite"></main>
   </div>
   <div id="toast" class="toast" role="status"></div>
+
+  <section id="context-modal" class="upload-modal hidden" role="dialog" aria-modal="true" aria-labelledby="context-title">
+    <div class="upload-dialog panel context-dialog">
+      <div class="panel-title"><div><h2 id="context-title">¿Con qué rol vas a trabajar?</h2><p>Tu sesión opera con un solo cliente y un solo rol a la vez. Cambiar de rol después pide confirmar tu identidad.</p></div><button class="icon-button" id="close-context" type="button" aria-label="Cerrar">×</button></div>
+      <div id="context-options" class="context-options"></div>
+    </div>
+  </section>
 
   <template id="home-template">
     <section class="page home-page">
@@ -142,6 +152,8 @@
         </div>
         <div id="duplicates" class="duplicates"></div>
       </section>
+
+      <div id="ocr-status" class="ocr-status hidden" role="status" aria-live="polite"></div>
 
       <section class="panel batches-panel">
         <div class="panel-title"><div><h2>Lotes recientes</h2><p>PDF multipágina y avance por documento</p></div></div>
@@ -262,7 +274,6 @@
               <label>Sucursal principal *<select name="sucursal_clave" id="receipt-branch" required></select></label>
               <label>Categoría *<select name="categoria_id" id="receipt-category" required></select></label>
               <label>Subcategoría (opcional)<select name="subcategoria_id" id="receipt-subcategory"></select></label>
-              <label>Centro de costo *<select name="centro_costo_id" id="receipt-cost-center" required></select></label>
               <label>Rol de quien captura *<select name="rol_creador" required><option value="capturista">Capturista</option><option value="gerente">Gerente</option></select></label>
             </div>
           </fieldset></details>
@@ -332,7 +343,7 @@
           <label>Desde<input id="analytics-date-from" type="date"></label>
           <label>Hasta<input id="analytics-date-to" type="date"></label>
         </div>
-        <label>Categoría<select id="analytics-category"><option value="">Todas</option><option value="FIJOS">Fijos</option><option value="VARIABLES">Variables</option></select></label>
+        <label>Categoría<select id="analytics-category"><option value="">Todas</option></select></label>
         <button id="analytics-apply" class="button primary" type="button">Aplicar filtros</button>
       </section>
 
@@ -426,6 +437,37 @@
           <div class="panel-title"><div><h2>Evolución semanal</h2><p>Ventas y utilidad operativa de las últimas semanas disponibles.</p></div></div>
           <div id="finance-trend" class="finance-trend"></div>
         </section>
+        <details class="panel finance-wide payroll-panel collapsible-panel" id="payroll-panel">
+          <summary class="panel-title"><div><h2>Nómina de la semana</h2><p id="payroll-period-label">Captura manual por sucursal.</p></div><span class="expand-label">Ver nómina</span></summary>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table finance-table">
+              <thead><tr><th>Sucursal</th><th class="numeric">Estimado</th><th class="numeric">Capturado</th><th>Nota</th><th></th></tr></thead>
+              <tbody id="payroll-rows"></tbody>
+            </table>
+          </div>
+          <small>Si no hay captura, el Estado de Resultados usa el estimado. Al guardar un importe sustituye al estimado; vacío lo elimina.</small>
+        </details>
+        <details class="panel finance-wide commission-panel collapsible-panel" id="commission-panel">
+          <summary class="panel-title"><div><h2>Comisiones del mes</h2><p id="commission-period-label">Proyección por porcentaje y cierre real mensual.</p></div><span class="expand-label">Ver comisiones</span></summary>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table finance-table">
+              <thead><tr><th>Sucursal</th><th>Concepto</th><th class="numeric">Proyectado</th><th class="numeric">Real del mes</th><th class="numeric">Diferencia</th><th></th></tr></thead>
+              <tbody id="commission-rows"></tbody>
+            </table>
+          </div>
+          <h3>Porcentajes de proyección</h3>
+          <form id="commission-parameter-form" class="mini-catalog-form">
+            <select name="concepto" required>
+              <option value="VISA">Terminal Visa</option><option value="AMEX">Terminal Amex</option>
+              <option value="BANCO">Banco</option><option value="APPS">Apps</option><option value="SERVICIOS">Servicios</option>
+            </select>
+            <select name="canal"><option value="">Sin canal</option><option value="UBER">Uber</option><option value="RAPPI">Rappi</option></select>
+            <select name="base" required></select>
+            <input name="valor" type="number" step="0.0001" min="0" required placeholder="% o monto">
+            <div><button class="button primary small">Guardar</button></div>
+          </form>
+          <div id="commission-parameters" class="mini-catalog"></div>
+        </details>
         <details class="panel finance-wide sales-breakdown-panel collapsible-panel">
           <summary class="panel-title"><div><h2>Desglose diario de ventas</h2><p>Abre para ver o capturar métodos de pago, familias, visitas y diferencias.</p></div><span class="expand-label">Ver desglose</span><span id="sales-edit-state" class="badge warning">Seleccione una sucursal</span></summary>
           <div id="sales-scope-summary" class="sales-scope-summary"></div>
@@ -566,7 +608,6 @@
               <label>Nombre comercial<input name="nombre_comercial" maxlength="250"></label>
               <label>Categoría sugerida<select name="categoria" id="provider-category"><option value="">Sin regla</option></select></label>
               <label>Subcategoría sugerida<select name="subcategoria" id="provider-subcategory"><option value="">Sin subcategoría</option></select></label>
-              <label>Centro de costo<select name="centro_costo" id="provider-cost-center"><option value="">Sin centro</option></select></label>
               <label class="wide">Alias OCR separados por |<textarea name="aliases" rows="3" placeholder="PROVEEDOR FICTICIO GAMMA | PROVEEDOR C"></textarea></label>
             </div>
             <label class="check-row"><input type="checkbox" name="activo" checked><span>Proveedor activo</span></label>
@@ -594,13 +635,42 @@
         <div id="quality-list" class="quality-list"></div>
       </section>
 
+      <section class="panel own-entity-panel">
+        <div class="panel-title"><div><h2>Razones sociales del grupo</h2><p>Los receptores de tus facturas. El lector las usa para no confundirlas con el proveedor; las sucursales ya aportan su RFC y razón social.</p></div></div>
+        <form id="own-entity-form" class="mini-catalog-form">
+          <input name="nombre" required minlength="4" maxlength="250" placeholder="Razón social o nombre">
+          <input name="rfc" maxlength="20" placeholder="RFC (opcional)">
+          <label class="check-row"><input type="checkbox" name="activa" checked><span>Activa</span></label>
+          <div><button type="button" class="button ghost small" id="own-entity-clear">Limpiar</button><button class="button primary small">Guardar</button></div>
+        </form>
+        <div id="own-entity-list" class="mini-catalog"></div>
+      </section>
+
+      <section class="panel fixed-expense-panel">
+        <div class="panel-title"><div><h2>Gastos fijos</h2><p>Solo los proveedores de esta lista pueden clasificarse como Gastos fijos. Agréguelos aquí antes de capturar sus facturas.</p></div></div>
+        <form id="fixed-expense-form" class="mini-catalog-form">
+          <select name="proveedor_id" id="fixed-expense-provider" required></select>
+          <select name="subcategoria_id" id="fixed-expense-subcategory"><option value="">Sin subcategoría</option></select>
+          <select name="periodicidad">
+            <option value="">Sin periodicidad sugerida</option>
+            <option value="una_semana">Una semana</option>
+            <option value="mensual">Mensual</option>
+            <option value="bimestral">Bimestral</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+          <label class="check-row"><input type="checkbox" name="activa" checked><span>Activo</span></label>
+          <div><button type="button" class="button ghost small" id="fixed-expense-clear">Limpiar</button><button class="button primary small">Guardar</button></div>
+        </form>
+        <div id="fixed-expense-list" class="mini-catalog"></div>
+      </section>
+
       <section class="panel accounting-catalog-panel">
-        <div class="panel-title"><div><h2>Estructura contable</h2><p>Fijos y variables son categorías maestras; subcategorías y centros de costo son configurables.</p></div></div>
+        <div class="panel-title"><div><h2>Estructura contable</h2><p>Las nueve categorías son fijas; las subcategorías de cada una se configuran aquí.</p></div></div>
         <div class="accounting-catalog-grid">
           <div class="accounting-column">
             <h3>Categorías maestras</h3>
             <div id="accounting-categories" class="mini-catalog"></div>
-            <small>Se mantienen en dos para evitar mezclar naturaleza del gasto con área operativa.</small>
+            <small>Nómina y Comisiones no se capturan con facturas; se registran por separado.</small>
           </div>
           <div class="accounting-column">
             <h3>Subcategorías</h3>
@@ -613,17 +683,6 @@
               <div><button type="button" class="button ghost small" data-clear-catalog="subcategory-form">Limpiar</button><button class="button primary small">Guardar</button></div>
             </form>
             <div id="accounting-subcategories" class="mini-catalog"></div>
-          </div>
-          <div class="accounting-column">
-            <h3>Centros de costo</h3>
-            <form id="cost-center-form" class="mini-catalog-form">
-              <input type="hidden" name="id">
-              <input name="clave" required maxlength="50" placeholder="CLAVE">
-              <input name="nombre" required maxlength="150" placeholder="Nombre visible">
-              <label class="check-row"><input type="checkbox" name="activo" checked><span>Activo</span></label>
-              <div><button type="button" class="button ghost small" data-clear-catalog="cost-center-form">Limpiar</button><button class="button primary small">Guardar</button></div>
-            </form>
-            <div id="accounting-cost-centers" class="mini-catalog"></div>
           </div>
         </div>
       </section>
@@ -641,9 +700,11 @@
         <section class="document-panel panel">
           <div class="panel-title"><div><h2>Documento original</h2><p>Fuente de verdad para la revisión</p></div><a id="open-document" class="button ghost small" target="_blank">Abrir</a></div>
           <div id="document-preview" class="document-preview"></div>
+          <div id="related-pages" class="related-pages hidden"></div>
         </section>
         <section class="data-panel panel">
           <div id="validation-summary"></div>
+          <div id="uncertain-summary" class="uncertain-summary hidden"></div>
           <div id="branch-suggestion" class="branch-suggestion hidden"></div>
           <form id="review-form">
             <div id="review-fields" class="review-fields"></div>
@@ -660,7 +721,7 @@
           <div id="learning-panel" class="learning-panel">
             <strong>Aprender de esta revisión</strong>
             <label id="remember-alias-row"><input type="checkbox" id="remember-alias"><span id="remember-alias-label">Recordar el nombre leído como alias del proveedor</span></label>
-            <label><input type="checkbox" id="remember-classification"><span>Usar esta categoría, subcategoría y centro de costo para próximas facturas del proveedor</span></label>
+            <label><input type="checkbox" id="remember-classification"><span>Usar esta categoría y subcategoría para próximas facturas del proveedor</span></label>
             <small>Las reglas quedan auditadas y se pueden reemplazar desde el catálogo.</small>
           </div>
           <div id="invoice-periodification-panel" class="periodification-panel hidden">
@@ -685,6 +746,7 @@
     </section>
   </template>
 
-  <script src="/static/app.js?v=20260829-2" defer></script>
+  <script src="/static/acceso.js?v=20261018-3" defer></script>
+  <script src="/static/app.js?v=20261018-1" defer></script>
 </body>
 </html>

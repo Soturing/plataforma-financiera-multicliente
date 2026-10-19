@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from app.config import get_settings
 from app.main import app
 from app.provider_catalog import find_provider, normalize_alias, normalize_provider_rfc
+from apoyo_db import conexion_pruebas
 
 
 TEST_ACTOR = "pytest-learning"
@@ -25,8 +26,32 @@ def test_provider_catalog_template_is_downloadable():
     assert response.content.startswith(b"PK")
 
 
+def test_provider_catalog_template_round_trips_through_importer():
+    from openpyxl import load_workbook
+
+    from app.provider_catalog import parse_provider_file
+    from app.provider_template import PROVIDER_HEADERS, build_provider_template
+
+    workbook = load_workbook(BytesIO(build_provider_template(
+        [("FIJOS", "Gastos fijos"), ("VARIABLES_OPERATIVOS", "Variables operativos")],
+        [("FIJOS", "RENTA", "Renta")],
+    )))
+    assert [cell.value for cell in workbook["Proveedores"][1]] == PROVIDER_HEADERS
+    workbook["Proveedores"].append(
+        [None, "Proveedor Ficticio SA", "Proveedor Ficticio", None, "FIJOS", "RENTA", "PF | P FICTICIO", "SI"]
+    )
+    buffer = BytesIO()
+    workbook.save(buffer)
+
+    rows = parse_provider_file("catalogo.xlsx", buffer.getvalue())
+
+    assert len(rows) == 1
+    assert rows[0]["nombre_normalizado"] == "Proveedor Ficticio"
+    assert rows[0]["categoria"] == "FIJOS"
+
+
 def cleanup_learning_data():
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         conn.execute(
             """
             DELETE FROM core.facturas_finales
@@ -61,8 +86,7 @@ def create_provider(client: TestClient, aliases=None):
             "razon_social": TEST_CANONICAL,
             "nombre_normalizado": TEST_CANONICAL,
             "nombre_comercial": "Canonico",
-            "categoria": "VARIABLES",
-            "centro_costo": "COCINA",
+            "categoria": "VARIABLES_OPERATIVOS",
             "aliases": [TEST_ALIAS] if aliases is None else aliases,
             "actualizado_por": TEST_ACTOR,
         },
@@ -87,7 +111,7 @@ def test_catalog_alias_resolves_to_canonical_provider():
     client = TestClient(app)
     try:
         provider = create_provider(client)
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             match = find_provider(conn, proposed_name=TEST_ALIAS)
             assert str(match["id"]) == provider["id"]
             assert match["nombre_normalizado"] == TEST_CANONICAL
@@ -103,8 +127,8 @@ def test_provider_csv_import_has_preview_before_commit():
     cleanup_learning_data()
     client = TestClient(app)
     csv_data = (
-        "rfc,razon_social,nombre_normalizado,nombre_comercial,categoria,subcategoria,centro_costo,aliases,activo\n"
-        f",{TEST_CANONICAL},{TEST_CANONICAL},Canonico,VARIABLES,,COCINA,{TEST_ALIAS},SI\n"
+        "rfc,razon_social,nombre_normalizado,nombre_comercial,categoria,subcategoria,aliases,activo\n"
+        f",{TEST_CANONICAL},{TEST_CANONICAL},Canonico,VARIABLES_OPERATIVOS,,{TEST_ALIAS},SI\n"
     ).encode("utf-8")
     try:
         preview = client.post(
@@ -114,7 +138,7 @@ def test_provider_csv_import_has_preview_before_commit():
         )
         assert preview.status_code == 200, preview.text
         assert preview.json()["creados"] == 1
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             assert conn.execute(
                 "SELECT count(*) FROM catalog.proveedores WHERE nombre_normalizado = %s",
                 (TEST_CANONICAL,),
@@ -166,7 +190,7 @@ def test_human_correction_can_remember_alias_and_retire_transient_provider():
             },
         )
         assert corrected.status_code == 200, corrected.text
-        with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+        with conexion_pruebas(row_factory=dict_row) as conn:
             match = find_provider(conn, proposed_name=TEST_ALIAS)
             assert str(match["id"]) == canonical["id"]
             transient = conn.execute(

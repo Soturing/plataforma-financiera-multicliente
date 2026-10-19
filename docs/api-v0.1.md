@@ -10,7 +10,7 @@ La documentación ejecutable completa está disponible en `/docs` cuando el back
 
 Formulario multipart:
 
-- `archivo`: JPG, PNG, WEBP o PDF; máximo 15 MB.
+- `archivo`: JPG, PNG, WEBP o PDF; máximo 100 MB.
 - `sucursal_clave`: por ahora `DEMO-01`.
 - `creada_por`: nombre o identificador del capturista.
 
@@ -125,7 +125,7 @@ Cada campo modificado se registra por separado en `audit.correcciones`.
 
 Formulario multipart:
 
-- `archivo`: PDF, máximo 15 MB y 200 páginas por defecto;
+- `archivo`: PDF, máximo 100 MB y 200 páginas por defecto;
 - `sucursal_clave`;
 - `creada_por`.
 
@@ -141,7 +141,13 @@ Devuelve totales por estado: recibidas, procesando, en revisión, aprobadas, rec
 
 `POST /api/v1/lotes/{id}/procesar`
 
-Inicia un worker independiente y responde inmediatamente. Un bloqueo asesor de PostgreSQL impide que dos workers procesen simultáneamente el mismo lote.
+Encola las páginas pendientes (`recibida`, `error`) y responde inmediatamente con `encoladas`. Los workers de la cola las leen en orden; pedirlo otra vez no duplica trabajos. Ver [cola-ocr.md](cola-ocr.md).
+
+### Estado de la cola de lectura
+
+`GET /api/v1/cola-ocr`
+
+Devuelve documentos en cola, leyéndose y reintentando, fallidos en 24 h, segundos por documento, tiempo estimado y workers activos.
 
 ### Reclasificar desde OCR guardado
 

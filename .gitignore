@@ -29,6 +29,7 @@ tmp/
 # Marca y configuración específica de cada cliente
 app/static/brands/
 config/tenants/private/
+config/secretos/private/
 
 # Bases de datos, reportes y exportaciones locales
 *.db

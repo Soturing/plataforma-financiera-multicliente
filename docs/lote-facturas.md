@@ -6,7 +6,7 @@ Cuando se solicite el lote, cargar aproximadamente 100 documentos reales. No es 
 
 - JPG, JPEG, PNG o WEBP para fotografías.
 - PDF para facturas digitales o escaneadas.
-- Máximo inicial: 15 MB por archivo.
+- Máximo: 100 MB por archivo.
 
 ## Variedad deseable
 

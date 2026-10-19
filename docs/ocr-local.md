@@ -53,8 +53,8 @@ Las reglas no inventan valores. Los campos ausentes quedan en `null` y generan v
 
 - Un PDF multipágina cargado como documento individual permanece unido.
 - El lote que divide por páginas se usa solo cuando cada página es una factura independiente.
-- Solo se ejecuta un lote simultáneamente para no saturar la CPU del equipo de demo.
-- La UI consulta el avance cada tres segundos.
+- La lectura pasa por una cola con workers permanentes (ver [cola-ocr.md](cola-ocr.md)): varios lotes y cargas pueden esperar a la vez sin saturar la CPU, y un worker caído no pierde documentos.
+- La UI consulta el avance cada tres segundos mientras hay documentos pendientes.
 - Las páginas fallidas quedan en `error` y pueden reintentarse.
 - El proceso continúa aunque una página individual falle.
 

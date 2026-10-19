@@ -1,0 +1,27 @@
+# Proxy público con TLS automático (Let's Encrypt). Variables: DOMINIO, CORREO_TLS.
+{
+	email {$CORREO_TLS}
+}
+
+(cabeceras) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+# Pantalla de acceso de Keycloak. La consola de administración y las APIs de
+# administración no se publican: sólo por túnel SSH a 127.0.0.1:8180.
+accesos.{$DOMINIO} {
+	import cabeceras
+	@administracion path /admin* /realms/master*
+	respond @administracion 404
+	reverse_proxy identidad:8080
+}
+
+# Un archivo por cliente en ./clientes/<cliente>.caddy (ver clientes/plantilla.caddy.ejemplo).
+import /etc/caddy/clientes/*.caddy

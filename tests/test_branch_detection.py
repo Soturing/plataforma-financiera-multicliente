@@ -6,10 +6,11 @@ from app.branch_detection import apply_detected_branch, detect_branch, infer_bra
 from app.config import get_settings
 from app.ocr.base import OcrDocument
 from app.ocr_processing import persist_ocr_result
+from apoyo_db import conexion_pruebas
 
 
 def test_detects_demo_a_by_recipient_rfc():
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         detected = detect_branch(
             conn,
             """
@@ -25,7 +26,7 @@ def test_detects_demo_a_by_recipient_rfc():
 
 
 def test_detects_demo_a_by_known_alias():
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         detected = detect_branch(conn, "Cliente: RESTAURANTE DEMO UNO")
 
     assert detected is not None
@@ -40,7 +41,7 @@ def test_detects_demo_a_by_known_alias():
     ],
 )
 def test_detects_other_operational_restaurants(text, expected):
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         detected = detect_branch(conn, text)
 
     assert detected is not None
@@ -57,7 +58,7 @@ def test_detects_other_operational_restaurants(text, expected):
     ],
 )
 def test_infers_restaurant_from_product_combination(items, expected):
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         inferred = infer_branch_by_consumption(conn, f"PROVEEDOR FICTICIO ALFA\nDETALLE\n{items}")
 
     assert inferred is not None
@@ -67,7 +68,7 @@ def test_infers_restaurant_from_product_combination(items, expected):
 
 
 def test_shared_products_alone_remain_low_confidence():
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         inferred = infer_branch_by_consumption(conn, "SIRLOIN DIEZMILLO")
 
     assert inferred is not None
@@ -75,7 +76,7 @@ def test_shared_products_alone_remain_low_confidence():
 
 
 def test_high_consumption_inference_preselects_only_unassigned_invoice():
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         invoice_id = conn.execute(
             """
             INSERT INTO core.facturas (
@@ -123,7 +124,7 @@ def test_ocr_pipeline_persists_consumption_evidence_for_review():
         text=text, lines=[], confidence=0.95, raw={},
         provider="pytest", model="synthetic", duration_ms=1,
     )
-    with psycopg.connect(get_settings().database_url, row_factory=dict_row) as conn:
+    with conexion_pruebas(row_factory=dict_row) as conn:
         invoice_id = conn.execute(
             """
             INSERT INTO core.facturas (

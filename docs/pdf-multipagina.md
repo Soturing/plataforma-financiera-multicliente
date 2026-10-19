@@ -26,7 +26,7 @@ El PDF original no se altera. Cada página conserva:
 
 - Solo se aceptan PDFs válidos.
 - Se rechazan PDFs sin páginas o protegidos con contraseña.
-- El límite inicial es de 200 páginas y 15 MB.
+- El límite inicial es de 200 páginas y 100 MB.
 - Si falla la separación o la escritura en base de datos, se eliminan los archivos parciales.
 - Las páginas ingresan como `recibida`; OCR e IA las procesarán posteriormente de manera independiente.
 - El botón `Procesar` inicia el worker OCR local. Los lotes nuevos lo inician automáticamente.

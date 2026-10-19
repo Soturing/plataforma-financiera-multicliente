@@ -7,6 +7,8 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.errors import DomainError
+from app.fixed_expenses import require_fixed_provider
+from app.page_groups import ACTIVE_CONTINUATION_SQL, related_pages
 from app.schemas import ProcesamientoSimulado
 from app.pdf_splitter import SplitPage
 from app.classification import classify_document, is_expense_document, save_classification
@@ -26,7 +28,16 @@ SELECT
     (
         SELECT count(*)::integer FROM core.validaciones v
         WHERE v.interpretacion_id = i.id AND NOT v.aprobada AND v.severidad = 'error'
-    ) AS validaciones_fallidas
+    ) AS validaciones_fallidas,
+    (
+        SELECT count(*)::integer FROM core.documentos_continuacion dc
+        WHERE dc.factura_principal_id = f.id AND dc.estado = 'activa'
+    ) AS paginas_adicionales,
+    (
+        SELECT count(*)::integer
+        FROM jsonb_each(COALESCE(i.salida_json->'confianza_campos', '{}'::jsonb)) AS campo
+        WHERE campo.value->>'nivel' = 'baja'
+    ) AS campos_dudosos
 FROM core.facturas f
 JOIN catalog.sucursales s ON s.id = f.sucursal_id
 LEFT JOIN LATERAL (
@@ -331,6 +342,18 @@ def cancel_batch(conn: Connection, batch_id: UUID, actor: str) -> dict[str, Any]
         raise DomainError("Lote no encontrado.", 404)
     if batch["estado"] == "cancelado":
         return {"lote_id": batch_id, "canceladas": 0, "estado": "cancelado"}
+    # Los trabajos en cola salen de la cola; el que ya se está leyendo se
+    # descarta al terminar porque su factura queda cancelada.
+    conn.execute(
+        """
+        UPDATE core.trabajos_ocr t
+        SET estado = 'cancelado', terminado_en = now(),
+            ultimo_error = 'Lote cancelado por el usuario'
+        FROM core.facturas f
+        WHERE f.id = t.factura_id AND f.lote_id = %s AND t.estado = 'en_cola'
+        """,
+        (batch_id,),
+    )
     rows = conn.execute(
         """
         UPDATE core.facturas
@@ -440,19 +463,18 @@ def process_simulated(conn: Connection, invoice_id: UUID, data: ProcesamientoSim
     catalogs = conn.execute(
         """
         SELECT p.id AS proveedor_id, c.id AS categoria_id,
-               sc.id AS subcategoria_id, cc.id AS centro_costo_id
+               sc.id AS subcategoria_id
         FROM catalog.categorias c
         LEFT JOIN catalog.subcategorias sc ON sc.categoria_id = c.id AND sc.clave = %s
-        JOIN catalog.centros_costo cc ON cc.clave = %s AND cc.activo
         LEFT JOIN catalog.proveedores p
           ON lower(p.nombre_normalizado) = lower(%s) AND p.activo
         WHERE c.clave = %s AND c.activa
         LIMIT 1
         """,
-        (data.subcategoria_clave, data.centro_costo_clave, data.proveedor, data.categoria_clave),
+        (data.subcategoria_clave, data.proveedor, data.categoria_clave),
     ).fetchone()
     if not catalogs:
-        raise DomainError("La categoría o centro de costo no existe.", 422)
+        raise DomainError("La categoría no existe o no está activa.", 422)
 
     if catalogs["proveedor_id"] is None:
         catalogs["proveedor_id"] = conn.execute(
@@ -496,10 +518,10 @@ def process_simulated(conn: Connection, invoice_id: UUID, data: ProcesamientoSim
             factura_id, ocr_resultado_id, version, modelo_ia, reglas_version,
             proveedor_id, proveedor_propuesto, rfc_emisor, uuid_fiscal,
             folio, folio_origen, fecha_emision, subtotal, descuento, iva, otros_impuestos, total,
-            categoria_id, subcategoria_id, centro_costo_id, confianza, salida_json
+            categoria_id, subcategoria_id, confianza, salida_json
         ) VALUES (
             %s, %s, %s, 'simulado', '0.1', %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
         ) RETURNING id
         """,
         (
@@ -509,7 +531,7 @@ def process_simulated(conn: Connection, invoice_id: UUID, data: ProcesamientoSim
             ("detectado" if data.folio else "fecha"), data.fecha_emision, data.subtotal,
             data.descuento, data.iva, data.otros_impuestos, data.total,
             catalogs["categoria_id"], catalogs["subcategoria_id"],
-            catalogs["centro_costo_id"], data.confianza_ia, json.dumps(raw),
+            data.confianza_ia, json.dumps(raw),
         ),
     ).fetchone()["id"]
     conn.execute("UPDATE core.facturas SET estado = 'validando' WHERE id = %s", (invoice_id,))
@@ -557,6 +579,7 @@ def list_review_queue(
     clauses = [
         "f.estado = 'requiere_revision'",
         "NOT EXISTS (SELECT 1 FROM core.documentos_duplicados dd WHERE dd.factura_duplicada_id = f.id AND dd.estado = 'pendiente')",
+        ACTIVE_CONTINUATION_SQL,
     ]
     params: list[Any] = []
     if document_type == "gastos":
@@ -609,6 +632,7 @@ def get_review_queue_summary(
     clauses = [
         "f.estado = 'requiere_revision'",
         "NOT EXISTS (SELECT 1 FROM core.documentos_duplicados dd WHERE dd.factura_duplicada_id = f.id AND dd.estado = 'pendiente')",
+        ACTIVE_CONTINUATION_SQL,
     ]
     params: list[Any] = []
     if document_type == "gastos":
@@ -694,8 +718,7 @@ def get_invoice_case(conn: Connection, invoice_id: UUID) -> dict[str, Any]:
             c.nombre AS categoria,
             CASE WHEN ff.id IS NOT NULL THEN ff.subcategoria_id ELSE i.subcategoria_id END AS subcategoria_id,
             sc.nombre AS subcategoria,
-            CASE WHEN ff.id IS NOT NULL THEN ff.centro_costo_id ELSE i.centro_costo_id END AS centro_costo_id,
-            cc.nombre AS centro_costo, i.confianza,
+            i.confianza,
             CASE WHEN ff.id IS NOT NULL THEN ff.observaciones ELSE i.observaciones END AS observaciones,
             i.proveedor_propuesto, i.salida_json,
             COALESCE(ff.genera_gasto, true) AS genera_gasto,
@@ -721,7 +744,6 @@ def get_invoice_case(conn: Connection, invoice_id: UUID) -> dict[str, Any]:
         LEFT JOIN catalog.proveedores p ON p.id = CASE WHEN ff.id IS NOT NULL THEN ff.proveedor_id ELSE i.proveedor_id END
         LEFT JOIN catalog.categorias c ON c.id = CASE WHEN ff.id IS NOT NULL THEN ff.categoria_id ELSE i.categoria_id END
         LEFT JOIN catalog.subcategorias sc ON sc.id = CASE WHEN ff.id IS NOT NULL THEN ff.subcategoria_id ELSE i.subcategoria_id END
-        LEFT JOIN catalog.centros_costo cc ON cc.id = CASE WHEN ff.id IS NOT NULL THEN ff.centro_costo_id ELSE i.centro_costo_id END
         LEFT JOIN LATERAL (
             SELECT tipo, confianza, evidencia
             FROM core.clasificaciones_documentales cdx
@@ -745,7 +767,10 @@ def get_invoice_case(conn: Connection, invoice_id: UUID) -> dict[str, Any]:
             """,
             (invoice["interpretacion_id"],),
         ).fetchall()
-    return {"factura": invoice, "validaciones": validations}
+    return {
+        "factura": invoice, "validaciones": validations,
+        "paginas_relacionadas": related_pages(conn, invoice_id),
+    }
 
 
 def list_catalogs(conn: Connection) -> dict[str, list[dict[str, Any]]]:
@@ -763,13 +788,10 @@ def list_catalogs(conn: Connection) -> dict[str, list[dict[str, Any]]]:
             """
         ).fetchall(),
         "categorias": conn.execute(
-            "SELECT id, clave, nombre FROM catalog.categorias WHERE activa ORDER BY orden, nombre"
+            "SELECT id, clave, nombre, tipo_costo, admite_facturas FROM catalog.categorias WHERE activa AND admite_facturas ORDER BY orden, nombre"
         ).fetchall(),
         "subcategorias": conn.execute(
             "SELECT id, categoria_id, clave, nombre FROM catalog.subcategorias WHERE activa ORDER BY nombre"
-        ).fetchall(),
-        "centros_costo": conn.execute(
-            "SELECT id, clave, nombre FROM catalog.centros_costo WHERE activo ORDER BY nombre"
         ).fetchall(),
         "reglas_periodificacion": conn.execute(
             """
@@ -1046,6 +1068,10 @@ def get_analytics_dashboard(
               SELECT 1 FROM core.documentos_duplicados dd
               WHERE dd.factura_duplicada_id = f.id AND dd.estado = 'pendiente'
           )
+          AND NOT EXISTS (
+              SELECT 1 FROM core.documentos_continuacion dc
+              WHERE dc.factura_continuacion_id = f.id AND dc.estado = 'activa'
+          )
           AND cd.tipo IN ('factura_fiscal', 'ticket_compra', 'nota_venta', 'remision', 'recibo')
         ORDER BY i.fecha_emision DESC NULLS LAST, f.recibida_en DESC
         """
@@ -1102,7 +1128,7 @@ def get_analytics_export_rows(
     rows = conn.execute(
         """
         SELECT tipo_documento, folio, fecha, anio_iso, semana_iso, restaurante, sucursal, proveedor,
-               proveedor_rfc, categoria, subcategoria, centro_costo, moneda,
+               proveedor_rfc, categoria, subcategoria, moneda,
                subtotal, descuento, iva, otros_impuestos, total, estado_fiscal
         FROM analytics.movimientos_gasto
         ORDER BY fecha, proveedor, total
@@ -1116,6 +1142,20 @@ def get_analytics_export_rows(
         fecha_hasta=fecha_hasta,
         categoria=categoria,
     )
+
+
+def _invoice_category(conn: Connection, category_id: UUID) -> dict[str, Any]:
+    category = conn.execute(
+        "SELECT clave, nombre, admite_facturas FROM catalog.categorias WHERE id = %s AND activa",
+        (category_id,),
+    ).fetchone()
+    if not category:
+        raise DomainError("La categoría elegida no está activa.", 422)
+    if not category["admite_facturas"]:
+        raise DomainError(
+            f"La categoría {category['nombre']} no se captura con facturas; se registra por separado.", 422
+        )
+    return category
 
 
 def _review_context(conn: Connection, invoice_id: UUID) -> dict[str, Any]:
@@ -1149,7 +1189,7 @@ def _review_context(conn: Connection, invoice_id: UUID) -> dict[str, Any]:
 FINAL_FIELDS = {
     "proveedor_id", "proveedor_nombre", "sucursal_id", "folio", "folio_origen", "fecha_emision", "subtotal", "descuento", "iva",
     "otros_impuestos", "total", "categoria_id", "subcategoria_id",
-    "centro_costo_id", "rfc_emisor", "uuid_fiscal", "observaciones",
+    "rfc_emisor", "uuid_fiscal", "observaciones",
 }
 
 
@@ -1308,12 +1348,9 @@ def decide_invoice(
         raise DomainError(
             "Asigne una sucursal real antes de aprobar y publicar el gasto.", 422
         )
-    category = conn.execute(
-        "SELECT clave FROM catalog.categorias WHERE id = %s AND activa",
-        (values["categoria_id"],),
-    ).fetchone()
-    if not category:
-        raise DomainError("La categoría elegida no está activa.", 422)
+    category = _invoice_category(conn, values["categoria_id"])
+    if category["clave"] == "FIJOS":
+        require_fixed_provider(conn, values["proveedor_id"])
 
     if remember_alias:
         output = context.get("salida_json") or {}
@@ -1360,7 +1397,6 @@ def decide_invoice(
             provider_id=values["proveedor_id"],
             category_id=values["categoria_id"],
             subcategory_id=values.get("subcategoria_id"),
-            cost_center_id=values.get("centro_costo_id"),
             actor=actor,
             invoice_id=invoice_id,
             review_id=review_id,
@@ -1389,11 +1425,11 @@ def decide_invoice(
         INSERT INTO core.facturas_finales (
             factura_id, revision_id, interpretacion_id, sucursal_id, proveedor_id,
             rfc_emisor, uuid_fiscal, folio, folio_origen, fecha_emision, subtotal, descuento, iva,
-            otros_impuestos, total, categoria_id, subcategoria_id, centro_costo_id,
+            otros_impuestos, total, categoria_id, subcategoria_id,
             observaciones, aprobada_por, tipo_documento, estado_fiscal
         ) VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s
         ) RETURNING id
         """,
         (
@@ -1403,7 +1439,7 @@ def decide_invoice(
             values.get("subtotal"), values.get("descuento"),
             values.get("iva"), values.get("otros_impuestos"), values["total"],
             values["categoria_id"], values.get("subcategoria_id"),
-            values.get("centro_costo_id"), values.get("observaciones"), actor,
+            values.get("observaciones"), actor,
             final_document_type,
             "con_cfdi" if final_document_type == "factura_fiscal" else "no_deducible",
         ),
@@ -1496,7 +1532,6 @@ def edit_approved_invoice(
         "total": context["total"],
         "categoria_id": context["categoria_id"],
         "subcategoria_id": context["subcategoria_id"],
-        "centro_costo_id": context["centro_costo_id"],
         "rfc_emisor": context["rfc_emisor"],
         "uuid_fiscal": context["uuid_fiscal"],
         "observaciones": context["observaciones"],
@@ -1580,22 +1615,14 @@ def edit_approved_invoice(
     ).fetchone()
     if not branch or branch["clave"] == "POR-ASIGNAR":
         raise DomainError("Seleccione una sucursal activa antes de guardar.", 422)
-    category = conn.execute(
-        "SELECT clave FROM catalog.categorias WHERE id = %s AND activa",
-        (values["categoria_id"],),
-    ).fetchone()
-    if not category:
-        raise DomainError("La categoría elegida no está activa.", 422)
+    category = _invoice_category(conn, values["categoria_id"])
+    if category["clave"] == "FIJOS":
+        require_fixed_provider(conn, values["proveedor_id"])
     if values.get("subcategoria_id") and not conn.execute(
         "SELECT 1 FROM catalog.subcategorias WHERE id = %s AND categoria_id = %s AND activa",
         (values["subcategoria_id"], values["categoria_id"]),
     ).fetchone():
         raise DomainError("La subcategoría no corresponde a la categoría seleccionada.", 422)
-    if values.get("centro_costo_id") and not conn.execute(
-        "SELECT 1 FROM catalog.centros_costo WHERE id = %s AND activo",
-        (values["centro_costo_id"],),
-    ).fetchone():
-        raise DomainError("El centro de costo no está activo.", 422)
 
     review_id = conn.execute(
         """
@@ -1633,11 +1660,11 @@ def edit_approved_invoice(
             sucursal_id, proveedor_id, rfc_emisor, uuid_fiscal, serie, folio,
             folio_origen, fecha_emision, moneda, metodo_pago, forma_pago,
             subtotal, descuento, iva, otros_impuestos, total,
-            categoria_id, subcategoria_id, centro_costo_id, observaciones,
+            categoria_id, subcategoria_id, observaciones,
             aprobada_por, tipo_documento, estado_fiscal, genera_gasto
         ) VALUES (
             %s, %s, %s, %s, true, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         ) RETURNING id
         """,
         (
@@ -1648,7 +1675,7 @@ def edit_approved_invoice(
             context["metodo_pago"], context["forma_pago"], values.get("subtotal"),
             values.get("descuento"), values.get("iva"), values.get("otros_impuestos"),
             values["total"], values["categoria_id"], values.get("subcategoria_id"),
-            values.get("centro_costo_id"), values.get("observaciones"), actor,
+            values.get("observaciones"), actor,
             context["tipo_documento"], context["estado_fiscal"],
             context["genera_gasto"] if generates_expense is None else generates_expense,
         ),
@@ -1700,7 +1727,6 @@ def edit_approved_invoice(
             provider_id=values["proveedor_id"],
             category_id=values["categoria_id"],
             subcategory_id=values.get("subcategoria_id"),
-            cost_center_id=values.get("centro_costo_id"),
             actor=actor,
             invoice_id=invoice_id,
             review_id=review_id,

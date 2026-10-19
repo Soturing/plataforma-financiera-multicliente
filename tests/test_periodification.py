@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.main import app
 from app.periodification import allocate_period, weeks_for_period
+from apoyo_db import conexion_pruebas
 
 
 client = TestClient(app)
@@ -16,7 +17,7 @@ client = TestClient(app)
 
 def cleanup():
     paths = []
-    with psycopg.connect(get_settings().database_url) as conn:
+    with conexion_pruebas() as conn:
         paths = [
             Path(row[0]) for row in conn.execute(
                 "SELECT archivo_url FROM core.facturas WHERE creada_por = 'pytest-periodificacion'"
@@ -27,6 +28,10 @@ def cleanup():
             "(SELECT id FROM core.facturas WHERE creada_por = 'pytest-periodificacion')"
         )
         conn.execute("DELETE FROM core.facturas WHERE creada_por = 'pytest-periodificacion'")
+        conn.execute(
+            "DELETE FROM catalog.gastos_fijos WHERE proveedor_id IN "
+            "(SELECT id FROM catalog.proveedores WHERE nombre_normalizado = 'IMSS Pytest')"
+        )
     for path in paths:
         path.unlink(missing_ok=True)
 
@@ -49,7 +54,7 @@ def test_bimonthly_period_can_span_nine_weeks_and_rounds_remainder_last():
 def test_fixed_invoice_is_applied_retroactively_across_the_month():
     cleanup()
     try:
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             baseline = dict(conn.execute(
                 """
                 SELECT semana_iso, gastos_fijos
@@ -74,11 +79,25 @@ def test_fixed_invoice_is_applied_retroactively_across_the_month():
                 "iva": "0",
                 "total": "100000.00",
                 "categoria_clave": "FIJOS",
-                "subcategoria_clave": "NOMINA_FIJA",
-                "centro_costo_clave": "GENERAL",
+                "subcategoria_clave": "SERVICIOS_FIJOS",
             },
         )
         assert processed.status_code == 200, processed.text
+        blocked = client.post(
+            f"/api/v1/facturas/{invoice_id}/aprobar",
+            json={"revisada_por": "pytest-periodificacion"},
+        )
+        assert blocked.status_code == 422, blocked.text
+        assert "lista de gastos fijos" in blocked.json()["detail"]
+        provider_id = next(
+            item["id"] for item in client.get("/api/v1/proveedores").json()
+            if item["nombre_normalizado"] == "IMSS Pytest"
+        )
+        listed = client.post(
+            "/api/v1/gastos-fijos",
+            json={"proveedor_id": provider_id, "periodicidad": "mensual", "actualizado_por": "pytest-periodificacion"},
+        )
+        assert listed.status_code == 200, listed.text
         approved = client.post(
             f"/api/v1/facturas/{invoice_id}/aprobar",
             json={
@@ -92,7 +111,7 @@ def test_fixed_invoice_is_applied_retroactively_across_the_month():
         )
         assert approved.status_code == 200, approved.text
 
-        with psycopg.connect(get_settings().database_url) as conn:
+        with conexion_pruebas() as conn:
             schedule = conn.execute(
                 """
                 SELECT ps.semana_iso, ps.monto

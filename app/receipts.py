@@ -8,6 +8,7 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.errors import DomainError
+from app.fixed_expenses import require_fixed_provider
 from app.periodification import save_periodification
 
 
@@ -28,7 +29,6 @@ SELECT ci.id, ci.folio, ci.numero_documento, ci.numero_documento_origen,
        p.telefono AS proveedor_telefono, p.giro AS proveedor_giro,
        c.id AS categoria_id, c.nombre AS categoria,
        sc.id AS subcategoria_id, sc.nombre AS subcategoria,
-       cc.id AS centro_costo_id, cc.nombre AS centro_costo,
        COALESCE((
            SELECT jsonb_agg(jsonb_build_object(
                'sucursal_id', ds.id, 'sucursal_clave', ds.clave,
@@ -44,7 +44,6 @@ JOIN catalog.sucursales s ON s.id = ci.sucursal_id
 JOIN catalog.proveedores p ON p.id = ci.proveedor_id
 JOIN catalog.categorias c ON c.id = ci.categoria_id
 LEFT JOIN catalog.subcategorias sc ON sc.id = ci.subcategoria_id
-LEFT JOIN catalog.centros_costo cc ON cc.id = ci.centro_costo_id
 """
 
 
@@ -59,7 +58,6 @@ def _catalog_id(conn: Connection, table: str, identifier: UUID, *, active: str) 
     allowed = {
         "categorias": "catalog.categorias",
         "subcategorias": "catalog.subcategorias",
-        "centros_costo": "catalog.centros_costo",
     }
     if table not in allowed:
         raise RuntimeError("Catálogo no permitido")
@@ -85,7 +83,6 @@ def create_internal_receipt(
     total: Decimal,
     categoria_id: UUID,
     subcategoria_id: UUID | None,
-    centro_costo_id: UUID,
     creado_por: str,
     rol_creador: str,
     firma_proveedor_nombre: str | None,
@@ -120,12 +117,15 @@ def create_internal_receipt(
     if not branch:
         raise DomainError("Sucursal no encontrada o inactiva.", 422)
     category = conn.execute(
-        "SELECT id, clave FROM catalog.categorias WHERE id = %s AND activa",
+        "SELECT id, clave, nombre, admite_facturas FROM catalog.categorias WHERE id = %s AND activa",
         (categoria_id,),
     ).fetchone()
     if not category:
         raise DomainError("El valor de categorias no existe o está inactivo.", 422)
-    _catalog_id(conn, "centros_costo", centro_costo_id, active="activo")
+    if not category["admite_facturas"]:
+        raise DomainError(
+            f"La categoría {category['nombre']} no se captura con comprobantes; se registra por separado.", 422
+        )
     if subcategoria_id:
         valid_subcategory = conn.execute(
             "SELECT 1 FROM catalog.subcategorias WHERE id = %s AND categoria_id = %s AND activa",
@@ -159,6 +159,9 @@ def create_internal_receipt(
             (proveedor_nombre, proveedor_nombre, proveedor_telefono, proveedor_giro),
         ).fetchone()["id"]
 
+    if category["clave"] == "FIJOS":
+        require_fixed_provider(conn, provider_id)
+
     parsed_distributions = distribuciones or [{"sucursal_clave": sucursal_clave, "monto": total}]
     if not parsed_distributions:
         raise DomainError("Agrega al menos una distribución del gasto.", 422)
@@ -187,12 +190,12 @@ def create_internal_receipt(
         INSERT INTO core.comprobantes_internos (
             sucursal_id, proveedor_id, numero_documento, numero_documento_origen,
             fecha_gasto, concepto, metodo_pago, total,
-            categoria_id, subcategoria_id, centro_costo_id, creado_por, rol_creador,
+            categoria_id, subcategoria_id, creado_por, rol_creador,
             firma_proveedor_nombre, firma_proveedor_confirmada, firma_proveedor_en,
             evidencia_url, evidencia_nombre, evidencia_mime, evidencia_sha256,
             estado, aprobaciones_requeridas
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             CASE WHEN %s THEN now() ELSE NULL END,
             %s, %s, %s, %s, 'pendiente_aprobacion', %s
         ) RETURNING id
@@ -200,7 +203,7 @@ def create_internal_receipt(
         (
             branch["id"], provider_id, numero_documento, numero_documento_origen,
             fecha_gasto, concepto, metodo_pago, total,
-            categoria_id, subcategoria_id, centro_costo_id, creado_por, rol_creador,
+            categoria_id, subcategoria_id, creado_por, rol_creador,
             (firma_proveedor_nombre or "").strip() or None, firma_proveedor_confirmada,
             firma_proveedor_confirmada,
             evidencia and evidencia["path"], evidencia and evidencia["name"],

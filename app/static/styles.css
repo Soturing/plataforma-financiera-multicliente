@@ -201,6 +201,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
 .weekly-expenses-preview h3 { margin: 0; font-size: 16px; }
 .weekly-expenses-preview input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
 .duplicate-total { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.ocr-status { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 16px; padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--green-soft); font-size: 13px; }
+.ocr-status span { color: var(--muted); }
+.ocr-status.warning { background: var(--amber-soft); border-color: #efd8a6; }
+.ocr-status.warning strong { color: var(--amber); }
+.ocr-status.error { background: var(--red-soft); border-color: #f0c4c4; }
+.ocr-status.error strong { color: var(--red); }
+.ocr-status .pulse { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--green); animation: ocr-pulse 1.4s ease-in-out infinite; }
+@keyframes ocr-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ocr-status .pulse { animation: none; } }
 .batches { padding: 8px 20px; }
 .batch-item { display: grid; grid-template-columns: 1fr minmax(180px, 1fr) auto auto; align-items: center; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .batch-actions { display: flex; justify-content: flex-end; gap: 7px; align-items: center; }
@@ -792,3 +801,95 @@ h1 { font-size: clamp(28px, 3vw, 38px); }
   .report-actions .button { width: 100%; min-height: 44px; }
   .legacy-report-controls .text-button { grid-column: auto; }
 }
+
+.inline-input { width: 9rem; padding: 0.35rem 0.5rem; text-align: right; }
+
+
+.app-version { margin: 10px 4px 0; color: #8e93bf; font-size: 10px; text-align: center; letter-spacing: .04em; }
+.related-pages { margin-top: 12px; padding: 10px 12px; border: 1px solid #e3d7a8; border-radius: 10px; background: #fff9e5; display: grid; gap: 8px; }
+.related-pages strong { font-size: 12px; color: #5c4a00; }
+.related-page { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.pages-badge { padding: 1px 6px; border-radius: 8px; background: #fff0b8; color: #5c4a00; font-weight: 700; }
+.field-baja input, .field-baja select { border-color: #c0392b !important; background: #fff5f4; }
+.field-media input, .field-media select { border-color: #d9a400 !important; background: #fffbea; }
+.field-reason { display: block; margin-top: 2px; font-size: 10.5px; }
+.field-baja .field-reason { color: #a02f23; }
+.field-media .field-reason { color: #7a5d00; }
+.uncertain-summary { margin: 8px 0; padding: 8px 12px; border: 1px solid #efc9c4; border-radius: 10px; background: #fff8f7; font-size: 12px; }
+.uncertain-summary .low { color: #a02f23; font-weight: 700; }
+.uncertain-summary .mid { color: #7a5d00; }
+.uncertain-summary small { display: block; margin-top: 3px; color: #6b7280; }
+.doubt-badge { padding: 1px 6px; border-radius: 8px; background: #fde2df; color: #a02f23; font-weight: 700; }
+
+/* Sesión y acceso seguro (fases 3 y 4) */
+.session-area { display: flex; align-items: center; gap: 10px; }
+.session-mode { font-size: 11px; font-weight: 700; letter-spacing: .02em; color: #e9b949; border: 1px solid rgba(233, 185, 73, .45); border-radius: 999px; padding: 4px 9px; }
+.session-login { color: #090d50; background: white; }
+.session-login:hover { background: #eceefa; }
+.session-chip { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.session-avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #090d50; background: #dfe2ff; flex: none; }
+.session-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.session-text strong { font-size: 13px; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.session-text small { font-size: 11px; color: #aeb3d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.session-key { margin-right: 4px; }
+.button.ghost-dark { color: white; background: transparent; border-color: #555b91; }
+.button.ghost-dark:hover { background: rgba(255, 255, 255, .08); }
+.context-dialog { width: min(560px, 100%); }
+.context-options { padding: 16px 20px 20px; display: grid; gap: 10px; }
+.context-option { text-align: left; display: grid; gap: 3px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px; background: white; cursor: pointer; }
+.context-option:hover:not([disabled]) { border-color: var(--green); background: var(--green-soft); }
+.context-option[disabled] { cursor: not-allowed; opacity: .6; }
+.context-option span, .context-option small { color: var(--muted); font-size: 13px; }
+.context-option em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--green); }
+.access-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.access-panel { min-width: 0; }
+.access-panel .panel-title { flex-wrap: wrap; }
+.access-empty { padding: 34px 20px; text-align: center; display: grid; gap: 14px; justify-items: center; color: var(--muted); }
+.access-table td { vertical-align: top; }
+.access-assignment { margin-bottom: 6px; }
+.access-assignment small { display: block; color: var(--muted); }
+.access-actions { white-space: nowrap; display: flex; gap: 6px; flex-wrap: wrap; }
+.access-rejected td { background: #fff8f8; }
+.invite-form { padding: 18px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 14px; background: #fafbff; }
+.invite-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.invite-form input, .invite-form select { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.invite-branches { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.invite-branches legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
+.invite-form .check-row { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.invite-note { margin: 0; font-size: 12px; color: var(--muted); }
+@media (max-width: 760px) {
+  .session-text, .session-mode { display: none; }
+  .access-actions { flex-direction: column; }
+}
+/* En pantallas angostas la barra oculta sus acciones; la sesión debe seguir accesible. */
+@media (max-width: 1100px) {
+  .topbar-actions { display: flex; gap: 8px; }
+  .topbar-actions .status-dot, .topbar-actions .user-field { display: none; }
+  .session-text, .session-mode { display: none; }
+  .session-area .button.small { padding: 6px 9px; font-size: 12px; }
+}
+@media (max-width: 420px) {
+  .topbar-context { display: none; }
+  .session-avatar { width: 28px; height: 28px; }
+}
+.invite-branches { flex-direction: column; flex-wrap: nowrap; }
+.invite-restaurant { display: grid; gap: 4px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.invite-restaurant small { color: var(--muted); font-weight: 500; margin-left: 6px; }
+.invite-branch { padding-left: 26px; }
+/* Ficha de persona y "Mi cuenta" (fase 6) */
+.person-dialog { width: min(760px, 100%); max-height: calc(100vh - 44px); overflow-y: auto; }
+.person-sections { padding: 16px 20px 22px; display: grid; gap: 12px; }
+.person-sections h3 { margin: 10px 0 0; font-size: 15px; }
+.person-actions, .person-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.person-assignment { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.person-assignment small { display: block; color: var(--muted); }
+.person-history summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.access-warning { margin: 0; padding: 10px 12px; border-radius: 10px; color: var(--amber); background: var(--amber-soft); font-size: 13px; }
+.recovery-box { display: grid; gap: 6px; }
+.access-devices { padding: 12px 20px 18px; }
+.device-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.device-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.device-list li > span:nth-child(2) { flex: 1; min-width: 0; }
+.device-list small { display: block; color: var(--muted); }
+.device-icon { font-size: 18px; }
+@media (max-width: 620px) { .person-assignment { flex-direction: column; align-items: flex-start; } }

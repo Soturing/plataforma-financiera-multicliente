@@ -133,3 +133,112 @@ Se adopta un plano de control compartido que no almacena información financiera
 Los reportes globales consultan APIs internas de sólo lectura y reciben métricas agregadas; no se crea una base central permanente con los datos de todos los clientes.
 
 La definición completa se conserva en `docs/seguridad/arquitectura-aislamiento.md`.
+
+## D-017 — Nueve categorías de gasto y sin centros de costo
+
+Estado: adoptada e implementada (migración 024).
+
+Las categorías son una lista fija: Gastos fijos, Nómina, Comisiones, Variables operativos, Gastos imprevistos, Mantenimiento, Gasolina, Gastos Barra y Gastos Restaurantes. Las subcategorías son editables dentro de cada categoría; Variables operativos no lleva subcategorías predefinidas porque cada sucursal tiene conceptos distintos.
+
+Los centros de costo se eliminan: la separación Barra/Restaurante ya la expresan las categorías Gastos Barra y Gastos Restaurantes, y mantener ambas obligaba a clasificar dos veces lo mismo.
+
+Cada categoría declara su `tipo_costo` (fijo o variable) y si admite facturas. Fijos y Nómina cuentan como gastos fijos en el Estado de Resultados y el punto de equilibrio; todas las demás, como costos variables. Nómina y Comisiones no se capturan con facturas.
+
+Lista de gastos fijos con alta previa: implementada (migración 025, `catalog.gastos_fijos`). Comisiones con proyección y cierre real mensual: implementadas (migración 026). Nómina con captura manual semanal por sucursal: implementada (migración 027). Detalle en `docs/categorias-gastos.md`.
+
+Cambio de contrato: las vistas `analytics.*` ya no exponen la columna `centro_costo` y `analytics.movimientos_gasto` añade `categoria_clave` y `tipo_costo`. Los libros de Excel que consuman esas vistas deben actualizarse.
+
+## D-018 — Usuarios y seguridad se construyen desde cero sobre esta línea
+
+Estado: adoptada (2026-10-18).
+
+La rama `codex/security-foundation` se considera código legado y no se reutiliza ni se porta. El sistema de usuarios, permisos, aislamiento y auditoría se construye sobre la línea de desarrollo hacia el MVP, con migraciones a partir de la 032, y se verifica contra los documentos de `docs/seguridad/`.
+
+Primera entrega: multi-tenant completo desde el inicio (plano de control, data plane por cliente, RLS, sesiones, roles y auditoría), no una versión de un solo cliente que luego se migre.
+
+## D-019 — Despliegue en servidor propio con Docker
+
+Estado: adoptada (2026-10-18).
+
+El primer cliente se despliega en un servidor o VPS propio con Docker. D-016 se materializa así:
+
+- plano de control: servicio propio, PostgreSQL de control y proveedor de identidad, en una red Docker separada;
+- data plane por cliente: contenedores propios de backend y workers OCR, PostgreSQL propio, volumen de archivos propio y red Docker propia sin ruta hacia otros clientes;
+- un proxy inverso con TLS es el único punto expuesto a internet.
+
+No existe un KMS gestionado, por lo que el gestor de secretos y las claves de cifrado por cliente se resuelven en la fase correspondiente del plan (`docs/seguridad/plan-implementacion.md`).
+
+## D-020 — Excepción temporal: una persona con los dos roles globales
+
+Estado: adoptada como excepción temporal (2026-10-18).
+
+Al inicio, una misma persona ocupará Director y Administrador de seguridad. Esto contradice la separación de funciones del catálogo de roles, por lo que se acepta solo como excepción temporal con estas compensaciones:
+
+- una sola identidad con dos asignaciones explícitas; cada sesión opera con **un solo rol activo**, elegido al entrar, y cambiar de rol exige reautenticación;
+- la auditoría registra siempre el rol efectivo; nunca se suman los permisos de ambos roles en una sesión;
+- se mantienen las dos llaves físicas FIDO2 exigidas para cuentas privilegiadas;
+- el resumen semanal de auditoría se copia fuera del servidor, porque no hay una segunda persona que lo revise;
+- el sistema no se diseña alrededor de la excepción: al darla de baja basta con retirar una asignación.
+
+La excepción termina al incorporar a una segunda persona con rol global o antes de incorporar al segundo cliente, lo que ocurra primero.
+
+## D-021 — Keycloak como proveedor de identidad
+
+Estado: adoptada (2026-10-18); sujeta a la prueba técnica de la fase 1.
+
+Se autoaloja Keycloak con su propio PostgreSQL dentro del plano de control (D-019). Se elige porque permite, sin código propio, exigir llaves físicas con atestación a los roles globales y passkeys del dispositivo a los roles operativos, sin contraseña de respaldo.
+
+Keycloak sólo demuestra la identidad. Sesiones, membresías, roles, alcance y auditoría pertenecen al plano de control de la aplicación, que recibe la identidad mediante OIDC con código y PKCE del lado del servidor.
+
+Si la prueba técnica de la fase 1 no confirma alguno de sus puntos, la decisión se revisa antes de iniciar la fase 2. Comparación y criterios en `docs/seguridad/plan-implementacion.md`.
+
+## D-022 — Modo de acceso abierto durante la transición
+
+Estado: adoptada como transitoria (2026-10-18).
+
+`FACTURAS_ACCESO_MODO=abierto` conserva el uso sin sesión de las pantallas existentes mientras las personas registran sus llaves y passkeys. Quien inicia sesión opera siempre con sus permisos, y su identidad se registra como autor. Las rutas de identidades, auditoría, clientes y operación técnica exigen sesión incluso en modo abierto.
+
+El modo seguro (`FACTURAS_ACCESO_MODO=seguro`) exige sesión en toda ruta de datos. Es obligatorio antes de producción y antes de incorporar al segundo cliente.
+
+## D-023 — El 8010 sirve la rama de seguridad sobre la base compartida
+
+Estado: resuelta por D-024 (2026-10-18): el 8010 sirve el data plane propio de `GRUPO-DEMO` (5440); la 5434 queda sólo para `migrate-legacy`.
+
+El puerto 8010 sirve la rama `claude/roadmap-usuarios-seguridad-8e43ba` (toda la línea `migrate-legacy` más usuarios y seguridad), con la misma base de negocio (5434) y los mismos archivos. El plano de control y Keycloak tienen bases propias.
+
+La fase 5 (RLS forzado y cuenta sin propiedad) no se aplica sobre la base compartida, porque dejaría inoperable la línea `migrate-legacy` si se vuelve a ejecutar contra ella. Antes de la fase 5 hay que decidir entre fusionar esta rama en `migrate-legacy` o darle a esta rama su propia base.
+
+## D-024 — Tenant = administración; restaurantes y sucursales estratificados en su base
+
+Estado: adoptada (2026-10-18).
+
+Un tenant es una administración o grupo restaurantero (el cliente de la consultora), no un restaurante. Cada tenant tiene su propio stack (vía 4 de D-016 y D-019): backend, workers, PostgreSQL, archivos, red y credenciales propios, generados desde una plantilla.
+
+Dentro de un tenant, todos sus restaurantes y sucursales comparten la base, estratificados así:
+
+- `catalog.restaurantes` formaliza la jerarquía restaurante → sucursal, que hoy es texto libre;
+- las asignaciones pueden dar alcance por restaurante completo o por sucursal, y se guardan en tablas pivote con integridad referencial;
+- RLS forzado por tenant y por sucursal es la segunda barrera dentro de la base: aunque el código omita un filtro, la base no devuelve filas fuera del alcance.
+
+La fase 5 crea el primer stack (`GRUPO-DEMO`) con una copia de la base 5434, que queda intacta para la línea `migrate-legacy`. El 8010 pasa a usar ese stack. Si un restaurante cambia de dueño, sus datos se extraen a un stack nuevo mediante un procedimiento puntual.
+
+## D-025 — OpenBao, claves por cliente y respaldos cifrados
+
+Estado: adoptada (2026-10-18). Detalle en `docs/seguridad/fase7-secretos-respaldos.md`.
+
+- **Secretos y claves:** OpenBao autoalojado con **desbloqueo manual** (3 llaves, se necesitan 2). Tras cada reinicio la app no obtiene secretos hasta que el director lo abre. El token raíz se revoca al inicializar.
+- **Claves por cliente:** dos claves Transit por cliente (`datos` y `respaldos`), no exportables, con rotación y bitácora de uso. Cada cliente tiene identidades propias para su app y sus respaldos, que sólo acceden a lo suyo.
+- **Respaldos:** restic, un repositorio por cliente, diario (pérdida máxima 24 h). Destino S3 con Object Lock y retención por ciclo de vida del bucket (30 diarios, 12 mensuales, 7 anuales, sujeto a validación legal). En desarrollo, rest-server en modo sólo anexado. Prueba de restauración trimestral en una base desechable.
+- **Archivos en reposo:** cifrado por cliente a nivel de sistema de archivos (gocryptfs) en el servidor, con su clave envuelta por la clave `datos` del cliente. Sustituye la propuesta inicial de cifrar en la app, que habría obligado a dejar copias descifradas temporales en unos 80 puntos de lectura.
+- **VPS:** proveedor por definir; el diseño no depende de uno en particular.
+
+## D-026 — Despliegue: una imagen, un stack por cliente y archivos con gocryptfs
+
+Estado: adoptada (2026-10-18). Detalle en `docs/seguridad/despliegue-servidor.md`.
+
+- Una sola imagen del backend para todos los clientes; cada cliente corre su app y sus workers en su propio proyecto Docker con su base en una red propia.
+- El contenedor obtiene sus secretos de OpenBao al arrancar con la identidad de la app del cliente y borra esa credencial antes de lanzar la app; corre sin privilegios.
+- Los archivos de cada cliente se cifran en el host con gocryptfs; el contenedor sólo recibe la vista descifrada.
+- Caddy es el único servicio público (TLS automático); cada cliente tiene su subdominio y Keycloak sólo expone la pantalla de acceso.
+- Tras un reinicio, una persona abre OpenBao y levanta los clientes (`deploy/servidor/arrancar.sh`).
+- Recomendación de proveedores: VPS en Hetzner (EE. UU. Este) salvo requisito de residencia en México (AWS mx-central-1); respaldos en Backblaze B2 con Object Lock, proveedor distinto al del VPS.

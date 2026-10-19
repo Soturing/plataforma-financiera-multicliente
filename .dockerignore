@@ -1,0 +1,16 @@
+# Nada de datos, secretos ni entornos locales en la imagen (politica-repositorio.md).
+.git
+.venv
+.env
+.env.*
+config/
+data/
+deliverables/
+entregables/
+output/
+reports/
+exports/
+tests/
+docs/
+**/__pycache__
+*.pyc

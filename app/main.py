@@ -16,6 +16,9 @@ from psycopg import Connection
 
 from app.config import Settings, get_settings
 from app.database import get_connection
+from app.seguridad.api import router as seguridad_router
+from app.seguridad.ciclo_vida import router as ciclo_vida_router
+from app.seguridad.autorizacion import actor_o, autorizar_ruta
 from app.errors import DomainError
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
@@ -25,11 +28,12 @@ from app.financial_reports import (
     get_report_options,
 )
 from app.accounting import (
+    get_payroll_overview,
     get_weekly_statement,
+    save_payroll,
     get_sales_breakdown,
     list_accounting_catalogs,
     register_sale,
-    save_cost_center,
     save_subcategory,
     save_sales_breakdown,
 )
@@ -72,7 +76,12 @@ from app.schemas import (
     ProcesamientoSimulado,
     ProveedorCatalogoRequest,
     SubcategoriaCatalogoRequest,
-    CentroCostoCatalogoRequest,
+    GastoFijoRequest,
+    EntidadPropiaRequest,
+    SepararContinuacionRequest,
+    ComisionParametroRequest,
+    ComisionCierreRequest,
+    NominaRequest,
     EliminarDocumentosRequest,
     EliminarLoteRequest,
     CancelarLoteRequest,
@@ -102,8 +111,25 @@ from app.receipts import (
 from app.pdf_splitter import pdf_page_count, split_pdf
 from uuid import uuid4
 import shutil
-from app.jobs import is_batch_active, start_batch_job, start_invoice_job
+from app.version import __version__
+from app.jobs import ensure_workers_running
+from app.ocr_queue import (
+    PRIORITY_BATCH,
+    PRIORITY_BULK,
+    PRIORITY_INTERACTIVE,
+    enqueue_batch,
+    enqueue_invoices,
+    is_batch_active,
+    queue_status,
+)
 from app.classification import reclassify_batch
+from app.provider_template import build_provider_template
+from app.fixed_expenses import list_fixed_expenses, save_fixed_expense
+from app.own_entities import list_own_entities, save_own_entity
+from app.page_groups import separate_continuation
+from app.commissions import (
+    delete_parameter, list_parameters, monthly_summary, save_closing, save_parameter,
+)
 from app.provider_catalog import (
     apply_provider_import,
     list_providers,
@@ -117,9 +143,13 @@ from app.provider_catalog import (
 
 app = FastAPI(
     title="Facturación IA API",
-    version="0.1.0",
+    version=__version__,
     description="Backend auditable para la demo de procesamiento de facturas.",
+    # Toda ruta pasa por la autorización del servidor; lo no clasificado se deniega (fase 4).
+    dependencies=[Depends(autorizar_ruta)],
 )
+app.include_router(seguridad_router)
+app.include_router(ciclo_vida_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
@@ -148,7 +178,7 @@ def user_interface():
 @app.get("/health", response_model=HealthResponse, tags=["sistema"])
 def health(conn: Connection = Depends(get_connection)):
     conn.execute("SELECT 1").fetchone()
-    return {"status": "ok", "database": "ok"}
+    return {"status": "ok", "database": "ok", "version": __version__}
 
 
 @app.post("/api/v1/facturas", response_model=FacturaCreada, status_code=201, tags=["facturas"])
@@ -176,7 +206,7 @@ async def upload_invoice(
             mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
             file_path=str(path.resolve()),
             sha256=digest,
-            created_by=creada_por,
+            created_by=actor_o(creada_por),
         )
     except Exception:
         Path(path).unlink(missing_ok=True)
@@ -228,25 +258,39 @@ async def upload_documents(
                 mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
                 file_path=str(path.resolve()),
                 sha256=digest,
-                created_by=creada_por,
+                created_by=actor_o(creada_por),
             )
-            created.append({**row, "archivo_url": str(path.resolve())})
+            created.append(row)
         except DomainError as exc:
             if path:
                 Path(path).unlink(missing_ok=True)
             target = duplicates if exc.status_code == 409 else errors
             target.append({"archivo": archivo.filename, "detalle": exc.message})
 
+    enqueued = enqueue_invoices(conn, [item["id"] for item in created], priority=PRIORITY_BULK)
     conn.commit()
-    for item in created:
-        start_invoice_job(item["id"], item.pop("archivo_url"))
+    if enqueued:
+        ensure_workers_running()
 
     return {
         "creados": created,
         "duplicados": duplicates,
         "errores": errors,
-        "procesamiento_iniciado": len(created),
+        "procesamiento_iniciado": enqueued,
     }
+
+
+@app.get("/api/v1/cola-ocr", tags=["procesamiento"])
+def ocr_queue_status(conn: Connection = Depends(get_connection)):
+    """Estado de la cola de lectura: pendientes, ritmo, tiempo estimado y workers vivos."""
+    status = queue_status(conn)
+    conn.commit()
+    # Si hay trabajo esperando y nadie lee (por ejemplo tras reiniciar el equipo),
+    # se levanta el lector sin que el usuario tenga que hacer nada.
+    status["iniciando_workers"] = bool(
+        status["pendientes"] and not status["workers_activos"] and ensure_workers_running()
+    )
+    return status
 
 
 @app.get("/api/v1/duplicados", tags=["facturas"])
@@ -331,8 +375,10 @@ def process_real_ocr(factura_id: UUID, conn: Connection = Depends(get_connection
         raise DomainError("Factura no encontrada.", 404)
     if row["estado"] not in {"recibida", "error"}:
         raise DomainError(f"La factura no puede procesarse desde {row['estado']}.", 409)
-    started = start_invoice_job(factura_id, row["archivo_url"])
-    return {"factura_id": factura_id, "estado": "procesando", "iniciado": started}
+    enqueued = enqueue_invoices(conn, [factura_id], priority=PRIORITY_INTERACTIVE)
+    conn.commit()
+    ensure_workers_running()
+    return {"factura_id": factura_id, "estado": "en_cola", "iniciado": bool(enqueued)}
 
 
 @app.get("/api/v1/revision/resumen", tags=["revision"])
@@ -404,6 +450,11 @@ def delete_invoices(
             except OSError:
                 pass
     return {**result, "archivos_eliminados": removed_files}
+
+
+@app.post("/api/v1/continuaciones/{vinculo_id}/separar", tags=["facturas"])
+def separate_page(vinculo_id: UUID, data: SepararContinuacionRequest, conn: Connection = Depends(get_connection)):
+    return separate_continuation(conn, vinculo_id, data.separado_por)
 
 
 @app.get("/api/v1/facturas/{factura_id}/expediente", tags=["facturas"])
@@ -482,7 +533,6 @@ async def create_receipt(
     metodo_pago: str = Form(...),
     total: Decimal = Form(...),
     categoria_id: UUID = Form(...),
-    centro_costo_id: UUID = Form(...),
     creado_por: str = Form(...),
     rol_creador: str = Form(...),
     proveedor_telefono: str | None = Form(default=None),
@@ -521,8 +571,7 @@ async def create_receipt(
             total=total,
             categoria_id=categoria_id,
             subcategoria_id=subcategoria_id,
-            centro_costo_id=centro_costo_id,
-            creado_por=creado_por,
+            creado_por=actor_o(creado_por),
             rol_creador=rol_creador,
             firma_proveedor_nombre=firma_proveedor_nombre,
             firma_proveedor_confirmada=firma_proveedor_confirmada,
@@ -613,18 +662,24 @@ def providers_catalog(conn: Connection = Depends(get_connection)):
 
 
 @app.get("/api/v1/proveedores/plantilla", tags=["catalogos"])
-def provider_catalog_template():
-    template = (
-        Path(__file__).resolve().parents[1]
-        / "deliverables"
-        / "plantilla_catalogo_proveedores.xlsx"
-    )
-    if not template.is_file():
-        raise DomainError("La plantilla todavía no está disponible.", 404)
-    return FileResponse(
-        template,
+def provider_catalog_template(conn: Connection = Depends(get_connection)):
+    categories = conn.execute(
+        "SELECT clave, nombre FROM catalog.categorias WHERE activa AND admite_facturas ORDER BY orden"
+    ).fetchall()
+    subcategories = conn.execute(
+        """
+        SELECT c.clave AS categoria, sc.clave, sc.nombre
+        FROM catalog.subcategorias sc JOIN catalog.categorias c ON c.id = sc.categoria_id
+        WHERE sc.activa AND c.activa AND c.admite_facturas ORDER BY c.orden, sc.nombre
+        """
+    ).fetchall()
+    return Response(
+        build_provider_template(
+            [(row["clave"], row["nombre"]) for row in categories],
+            [(row["categoria"], row["clave"], row["nombre"]) for row in subcategories],
+        ),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="Plantilla-catalogo-proveedores.xlsx",
+        headers={"Content-Disposition": 'attachment; filename="Plantilla-catalogo-proveedores.xlsx"'},
     )
 
 
@@ -658,14 +713,97 @@ def upsert_subcategory(
     return save_subcategory(conn, payload, actor)
 
 
-@app.post("/api/v1/catalogos/centros-costo", tags=["catalogos"])
-def upsert_cost_center(
-    data: CentroCostoCatalogoRequest,
+@app.get("/api/v1/entidades-propias", tags=["catalogos"])
+def own_entities(conn: Connection = Depends(get_connection)):
+    return list_own_entities(conn)
+
+
+@app.post("/api/v1/entidades-propias", tags=["catalogos"])
+def upsert_own_entity(data: EntidadPropiaRequest, conn: Connection = Depends(get_connection)):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_own_entity(conn, payload, actor)
+
+
+@app.get("/api/v1/gastos-fijos", tags=["catalogos"])
+def fixed_expenses(conn: Connection = Depends(get_connection)):
+    return list_fixed_expenses(conn)
+
+
+@app.post("/api/v1/gastos-fijos", tags=["catalogos"])
+def upsert_fixed_expense(
+    data: GastoFijoRequest,
     conn: Connection = Depends(get_connection),
 ):
     payload = data.model_dump(mode="python")
     actor = payload.pop("actualizado_por")
-    return save_cost_center(conn, payload, actor)
+    return save_fixed_expense(conn, payload, actor)
+
+
+@app.get("/api/v1/finanzas/nomina", tags=["finanzas"])
+def payroll_overview(
+    anio_iso: int = Query(ge=2000, le=2100),
+    semana_iso: int = Query(ge=1, le=53),
+    sucursal_clave: str | None = Query(default=None),
+    conn: Connection = Depends(get_connection),
+):
+    return get_payroll_overview(
+        conn, anio_iso=anio_iso, semana_iso=semana_iso, sucursal_clave=sucursal_clave
+    )
+
+
+@app.post("/api/v1/finanzas/nomina", tags=["finanzas"])
+def upsert_payroll(
+    data: NominaRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_payroll(conn, payload, actor)
+
+
+@app.get("/api/v1/finanzas/comisiones/parametros", tags=["finanzas"])
+def commission_parameters(
+    sucursal_clave: str | None = Query(default=None),
+    conn: Connection = Depends(get_connection),
+):
+    return list_parameters(conn, sucursal_clave)
+
+
+@app.post("/api/v1/finanzas/comisiones/parametros", tags=["finanzas"])
+def upsert_commission_parameter(
+    data: ComisionParametroRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_parameter(conn, payload, actor)
+
+
+@app.delete("/api/v1/finanzas/comisiones/parametros/{parameter_id}", tags=["finanzas"])
+def remove_commission_parameter(parameter_id: UUID, conn: Connection = Depends(get_connection)):
+    delete_parameter(conn, parameter_id)
+    return {"eliminado": True}
+
+
+@app.get("/api/v1/finanzas/comisiones/mes", tags=["finanzas"])
+def commission_month(
+    anio: int = Query(ge=2000, le=2100),
+    mes: int = Query(ge=1, le=12),
+    sucursal_clave: str | None = Query(default=None),
+    conn: Connection = Depends(get_connection),
+):
+    return monthly_summary(conn, anio=anio, mes=mes, sucursal_clave=sucursal_clave)
+
+
+@app.post("/api/v1/finanzas/comisiones/cierre", tags=["finanzas"])
+def commission_closing(
+    data: ComisionCierreRequest,
+    conn: Connection = Depends(get_connection),
+):
+    payload = data.model_dump(mode="python")
+    actor = payload.pop("actualizado_por")
+    return save_closing(conn, payload, actor)
 
 
 @app.get("/api/v1/entrenamiento/resumen", tags=["entrenamiento"])
@@ -696,7 +834,7 @@ async def import_providers(
             "errores": sum(bool(item["errores"]) for item in preview),
             "detalle": preview,
         }
-    return {"filas": len(preview), **apply_provider_import(conn, preview, importado_por)}
+    return {"filas": len(preview), **apply_provider_import(conn, preview, actor_o(importado_por))}
 
 
 @app.get("/api/v1/analytics/resumen", tags=["analytics"])
@@ -725,9 +863,6 @@ def _validate_analytics_filters(
         except ValueError as exc:
             raise DomainError("La semana ISO no existe para el año indicado.", 422) from exc
     normalized_category = categoria.upper() if categoria else None
-    allowed_categories = {"FIJOS", "VARIABLES"}
-    if normalized_category and normalized_category not in allowed_categories:
-        raise DomainError("Categoría contable no válida.", 422)
     return {
         "anio_iso": anio_iso,
         "semana_iso": semana_iso,
@@ -767,7 +902,7 @@ def analytics_export(
     rows = get_analytics_export_rows(conn, **filters)
     columns = [
         "tipo_documento", "folio", "fecha", "anio_iso", "semana_iso", "restaurante", "sucursal", "proveedor",
-        "proveedor_rfc", "categoria", "subcategoria", "centro_costo", "moneda",
+        "proveedor_rfc", "categoria", "subcategoria", "moneda",
         "subtotal", "descuento", "iva", "otros_impuestos", "total", "estado_fiscal",
     ]
     output = io.StringIO()
@@ -1063,7 +1198,7 @@ async def upload_batch(
             original_path=str(original_path.resolve()),
             original_name=archivo.filename or "lote.pdf",
             original_sha256=digest,
-            created_by=creada_por,
+            created_by=actor_o(creada_por),
             pages=pages,
         )
     except Exception:
@@ -1089,11 +1224,15 @@ def process_batch(lote_id: UUID, conn: Connection = Depends(get_connection)):
         raise DomainError("Lote no encontrado.", 404)
     if batch["estado"] == "cancelado":
         raise DomainError("El lote fue cancelado y no puede procesarse.", 409)
-    started = start_batch_job(lote_id)
+    enqueued = enqueue_batch(conn, lote_id, priority=PRIORITY_BATCH)
+    conn.commit()
+    if enqueued:
+        ensure_workers_running()
     return {
         "lote_id": lote_id,
-        "estado": "procesando" if started or is_batch_active(lote_id) else "pendiente",
-        "iniciado": started,
+        "estado": "procesando" if enqueued or is_batch_active(conn, lote_id) else "pendiente",
+        "iniciado": bool(enqueued),
+        "encoladas": enqueued,
     }
 
 
@@ -1159,7 +1298,7 @@ def reprocess_pending_batch(lote_id: UUID, conn: Connection = Depends(get_connec
         raise DomainError("Lote no encontrado.", 404)
     if batch["estado"] == "cancelado":
         raise DomainError("El lote fue cancelado y no puede reprocesarse.", 409)
-    if is_batch_active(lote_id):
+    if is_batch_active(conn, lote_id):
         raise DomainError("El lote ya se está procesando.", 409)
     rows = conn.execute(
         """
@@ -1171,12 +1310,14 @@ def reprocess_pending_batch(lote_id: UUID, conn: Connection = Depends(get_connec
         """,
         (lote_id,),
     ).fetchall()
+    enqueued = enqueue_batch(conn, lote_id, priority=PRIORITY_BATCH) if rows else 0
     conn.commit()
-    started = bool(rows) and start_batch_job(lote_id)
+    if enqueued:
+        ensure_workers_running()
     return {
         "lote_id": lote_id,
         "facturas_reiniciadas": len(rows),
-        "estado": "procesando" if started else "sin_pendientes",
+        "estado": "procesando" if enqueued else "sin_pendientes",
     }
 
 
