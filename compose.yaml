@@ -9,41 +9,6 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/10-initial-schema.sql:ro
-      - ./db/migrations/002_upload_batches.sql:/docker-entrypoint-initdb.d/11-upload-batches.sql:ro
-      - ./db/migrations/003_document_classification.sql:/docker-entrypoint-initdb.d/12-document-classification.sql:ro
-      - ./db/migrations/004_review_model_v02.sql:/docker-entrypoint-initdb.d/13-review-model-v02.sql:ro
-      - ./db/migrations/005_internal_receipts.sql:/docker-entrypoint-initdb.d/14-internal-receipts.sql:ro
-      - ./db/migrations/006_document_numbers.sql:/docker-entrypoint-initdb.d/15-document-numbers.sql:ro
-      - ./db/migrations/007_branch_recognition.sql:/docker-entrypoint-initdb.d/16-branch-recognition.sql:ro
-      - ./db/migrations/008_expense_documents.sql:/docker-entrypoint-initdb.d/17-expense-documents.sql:ro
-      - ./db/migrations/009_provider_learning.sql:/docker-entrypoint-initdb.d/18-provider-learning.sql:ro
-      - ./db/migrations/010_financial_structure.sql:/docker-entrypoint-initdb.d/19-financial-structure.sql:ro
-      - ./db/migrations/011_sales_breakdown.sql:/docker-entrypoint-initdb.d/21-sales-breakdown.sql:ro
-      - ./db/migrations/012_operational_branches.sql:/docker-entrypoint-initdb.d/22-operational-branches.sql:ro
-      - ./db/migrations/013_consumption_branch_inference.sql:/docker-entrypoint-initdb.d/23-consumption-branch-inference.sql:ro
-      - ./db/migrations/014_migrate_demo_pending_to_unassigned.sql:/docker-entrypoint-initdb.d/24-migrate-demo-pending.sql:ro
-      - ./db/migrations/015_raise_internal_receipt_limit.sql:/docker-entrypoint-initdb.d/25-raise-receipt-limit.sql:ro
-      - ./db/migrations/016_fixed_expense_periodification.sql:/docker-entrypoint-initdb.d/26-fixed-expense-periodification.sql:ro
-      - ./db/migrations/017_single_internal_receipt_approval.sql:/docker-entrypoint-initdb.d/27-single-receipt-approval.sql:ro
-      - ./db/migrations/018_editable_expense_flag.sql:/docker-entrypoint-initdb.d/28-editable-expense-flag.sql:ro
-      - ./db/migrations/019_document_duplicates.sql:/docker-entrypoint-initdb.d/29-document-duplicates.sql:ro
-      - ./db/migrations/020_backfill_document_duplicates.sql:/docker-entrypoint-initdb.d/30-backfill-document-duplicates.sql:ro
-      - ./db/migrations/021_document_deletion_and_cancellation.sql:/docker-entrypoint-initdb.d/31-document-deletion-and-cancellation.sql:ro
-      - ./db/migrations/022_weekly_report_expenses.sql:/docker-entrypoint-initdb.d/32-weekly-report-expenses.sql:ro
-      - ./db/migrations/023_estimated_fixed_expenses.sql:/docker-entrypoint-initdb.d/33-estimated-fixed-expenses.sql:ro
-      - ./db/migrations/024_expense_categories_v2.sql:/docker-entrypoint-initdb.d/34-expense-categories-v2.sql:ro
-      - ./db/migrations/025_fixed_expense_list.sql:/docker-entrypoint-initdb.d/35-fixed-expense-list.sql:ro
-      - ./db/migrations/026_sales_commissions.sql:/docker-entrypoint-initdb.d/36-sales-commissions.sql:ro
-      - ./db/migrations/027_manual_payroll.sql:/docker-entrypoint-initdb.d/37-manual-payroll.sql:ro
-      - ./db/migrations/028_document_type_quotation.sql:/docker-entrypoint-initdb.d/38-document-type-quotation.sql:ro
-      - ./db/migrations/029_own_entities.sql:/docker-entrypoint-initdb.d/39-own-entities.sql:ro
-      - ./db/migrations/030_ocr_job_queue.sql:/docker-entrypoint-initdb.d/40-ocr-job-queue.sql:ro
-      - ./db/migrations/031_document_page_groups.sql:/docker-entrypoint-initdb.d/41-document-page-groups.sql:ro
-      - ./db/migrations/032_restaurantes.sql:/docker-entrypoint-initdb.d/42-restaurantes.sql:ro
-      - ./db/migrations/033_rls_tenant_sucursal.sql:/docker-entrypoint-initdb.d/43-rls-tenant-sucursal.sql:ro
-      - ./db/migrations/034_auditoria_solo_anexado.sql:/docker-entrypoint-initdb.d/44-auditoria-solo-anexado.sql:ro
-      - ./db/seeds/001_demo_catalogs.sql:/docker-entrypoint-initdb.d/20-demo-catalogs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturas_app} -d ${POSTGRES_DB:-facturas_demo}"]
       interval: 5s
