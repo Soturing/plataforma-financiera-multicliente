@@ -44,6 +44,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   búsqueda de secretos con gitleaks y escaneo informativo de dependencias y código.
 - **Hoja de ruta integrada** con la auditoría de seguridad y de base de datos (`docs/roadmap-producto.md`).
 
+### Seguridad (etapa 2 del roadmap)
+
+- Cabeceras de seguridad en cada respuesta de la aplicación: Content-Security-Policy (sólo scripts del propio
+  origen), `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy` y
+  `Permissions-Policy` (`app/endurecimiento.py`).
+- Los archivos subidos se muestran en línea sólo si son PDF o imagen; cualquier otro tipo (p. ej. XML) se
+  descarga (`Content-Disposition: attachment`).
+- `/docs` y `/openapi.json` sólo con `environment` distinto de `produccion` y `acceso_modo` abierto.
+
 ### Corregido
 
 - El catálogo de proveedores en XLSX rechaza declaraciones XML (`DOCTYPE`/`ENTITY`) y los XLSX de proveedores

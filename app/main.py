@@ -19,6 +19,7 @@ from app.database import get_connection
 from app.seguridad.api import router as seguridad_router
 from app.seguridad.ciclo_vida import router as ciclo_vida_router
 from app.seguridad.autorizacion import actor_o, autorizar_ruta
+from app.endurecimiento import CABECERAS_SEGURIDAD, disposicion, documentacion_activa
 from app.errors import DomainError
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
@@ -141,12 +142,17 @@ from app.provider_catalog import (
 )
 
 
+_ajustes = get_settings()
+_documentacion = documentacion_activa(_ajustes.environment, _ajustes.acceso_modo)
+
 app = FastAPI(
     title="Facturación IA API",
     version=__version__,
     description="Backend auditable para la demo de procesamiento de facturas.",
     # Toda ruta pasa por la autorización del servidor; lo no clasificado se deniega (fase 4).
     dependencies=[Depends(autorizar_ruta)],
+    docs_url="/docs" if _documentacion else None,
+    openapi_url="/openapi.json" if _documentacion else None,
 )
 app.include_router(seguridad_router)
 app.include_router(ciclo_vida_router)
@@ -162,6 +168,14 @@ async def prevent_stale_demo_assets(request, call_next):
         or request.url.path.startswith("/api/")
     ):
         response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.middleware("http")
+async def cabeceras_de_seguridad(request, call_next):
+    response = await call_next(request)
+    for nombre, valor in CABECERAS_SEGURIDAD.items():
+        response.headers.setdefault(nombre, valor)
     return response
 
 
@@ -326,11 +340,12 @@ def duplicate_file(
         ".png": "image/png",
         ".webp": "image/webp",
     }
+    tipo = media_types.get(path.suffix.lower(), "application/octet-stream")
     return FileResponse(
         path,
-        media_type=media_types.get(path.suffix.lower(), "application/octet-stream"),
+        media_type=tipo,
         filename=row["archivo_nombre"],
-        content_disposition_type="inline",
+        content_disposition_type=disposicion(tipo),
     )
 
 
@@ -482,7 +497,7 @@ def invoice_file(
         path,
         media_type=row["archivo_mime"],
         filename=row["archivo_nombre"],
-        content_disposition_type="inline",
+        content_disposition_type=disposicion(row["archivo_mime"]),
     )
 
 
@@ -653,7 +668,7 @@ def receipt_evidence(
     path = path.resolve()
     if not path.is_relative_to(settings.upload_dir.resolve()) or not path.is_file():
         raise DomainError("La evidencia no está disponible.", 404)
-    return FileResponse(path, media_type=mime, filename=name, content_disposition_type="inline")
+    return FileResponse(path, media_type=mime, filename=name, content_disposition_type=disposicion(mime))
 
 
 @app.get("/api/v1/proveedores", tags=["catalogos"])
