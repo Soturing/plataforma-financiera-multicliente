@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("data/uploads")
     max_upload_bytes: int = 100 * 1024 * 1024
     max_pdf_pages: int = 200
+    # Límite de peticiones por IP y por minuto (app/limite_tasa.py); 0 lo apaga.
+    # `limite_acceso_por_minuto` es el de /auth/*, más estricto contra fuerza bruta.
+    limite_peticiones_por_minuto: int = 1200
+    limite_acceso_por_minuto: int = 30
+    # Detrás del proxy propio (Caddy) la IP real viene en X-Forwarded-For; sin proxy no se confía en ella.
+    proxy_confiable: bool = False
     # Cola OCR: procesos lectores permanentes. Cada uno carga su propio modelo
     # (cientos de MB de RAM), así que súbalo según la memoria del servidor.
     ocr_workers: int = 1

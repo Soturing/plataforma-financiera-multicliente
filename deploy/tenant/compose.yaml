@@ -39,6 +39,10 @@ services:
     image: ${FACTURAS_IMAGEN:-facturas-app:sin-ocr}
     command: ["api"]
     restart: unless-stopped
+    # Tope por contenedor (roadmap §3.6.7): un cliente no debe agotar el servidor compartido.
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    cpus: ${APP_CPUS:-1.0}
+    pids_limit: 512
     environment: &entorno_app
       SECRETOS_URL: http://secretos:8200
       SECRETOS_APP_ROLE_ID: ${SECRETOS_APP_ROLE_ID:?Falta SECRETOS_APP_ROLE_ID}
@@ -56,6 +60,8 @@ services:
       FACTURAS_SMTP_HOST: ${FACTURAS_SMTP_HOST:-correo-pruebas}
       FACTURAS_SMTP_PORT: ${FACTURAS_SMTP_PORT:-1025}
       FACTURAS_OCR_AUTOSTART_WORKERS: "false"
+      # Tras Caddy la IP real viene en X-Forwarded-For (límite de peticiones por IP).
+      FACTURAS_PROXY_CONFIABLE: ${FACTURAS_PROXY_CONFIABLE:-true}
     volumes:
       # Vista descifrada que monta gocryptfs en el servidor (deploy/servidor/archivos.sh).
       - ${ARCHIVOS_VISIBLES:?Falta ARCHIVOS_VISIBLES}:/datos/uploads
@@ -75,6 +81,11 @@ services:
     image: ${FACTURAS_IMAGEN:-facturas-app:sin-ocr}
     command: ["workers"]
     restart: unless-stopped
+    # Cada lector OCR consume 1.5–2 GB y mucha CPU (despliegue-servidor.md §2): el tope
+    # debe cubrir FACTURAS_OCR_WORKERS lectores; súbalo junto con ese valor.
+    mem_limit: ${WORKERS_MEM_LIMIT:-3g}
+    cpus: ${WORKERS_CPUS:-2.0}
+    pids_limit: 512
     environment:
       <<: *entorno_app
       FACTURAS_OCR_WORKERS: ${FACTURAS_OCR_WORKERS:-1}

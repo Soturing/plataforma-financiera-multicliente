@@ -21,6 +21,7 @@ from app.seguridad.ciclo_vida import router as ciclo_vida_router
 from app.seguridad.autorizacion import actor_o, autorizar_ruta
 from app.endurecimiento import CABECERAS_SEGURIDAD, disposicion, documentacion_activa
 from app.errors import DomainError
+from app.limite_tasa import LimitadorVentana, ip_del_cliente
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
 from app.financial_reports import (
@@ -93,7 +94,7 @@ from app.schemas import (
     RechazarComprobanteRequest,
     SustituirComprobanteRequest,
 )
-from app.storage import save_upload
+from app.storage import read_limited, save_upload
 from app.ocr.paddle_engine import get_ocr_engine
 from app.sales_image import parse_sales_image
 from app.sales_xlsx import parse_sales_xlsx
@@ -169,6 +170,36 @@ async def prevent_stale_demo_assets(request, call_next):
     ):
         response.headers["Cache-Control"] = "no-store"
     return response
+
+
+_limite_general = LimitadorVentana(_ajustes.limite_peticiones_por_minuto)
+_limite_acceso = LimitadorVentana(_ajustes.limite_acceso_por_minuto)
+
+
+@app.middleware("http")
+async def limite_de_peticiones(request, call_next):
+    ruta = request.url.path
+    if ruta.startswith("/static/") or (not _ajustes.limite_peticiones_por_minuto and not _ajustes.limite_acceso_por_minuto):
+        return await call_next(request)
+    ip = ip_del_cliente(
+        request.client.host if request.client else None,
+        request.headers.get("x-forwarded-for"),
+        _ajustes.proxy_confiable,
+    )
+    limitadores = []
+    if _ajustes.limite_peticiones_por_minuto:
+        limitadores.append(("general", _limite_general))
+    if ruta.startswith("/auth/") and _ajustes.limite_acceso_por_minuto:
+        limitadores.append(("acceso", _limite_acceso))
+    for nombre, limitador in limitadores:
+        permitido, espera = limitador.permitir(f"{nombre}:{ip}")
+        if not permitido:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Demasiadas peticiones. Intenta de nuevo en unos segundos."},
+                headers={"Retry-After": str(espera)},
+            )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -835,10 +866,7 @@ async def import_providers(
 ):
     if not (archivo.filename or "").lower().endswith((".xlsx", ".csv", ".tsv")):
         raise DomainError("El catálogo debe ser XLSX, CSV o TSV.", 415)
-    content = await archivo.read()
-    await archivo.close()
-    if len(content) > 10 * 1024 * 1024:
-        raise DomainError("El catálogo supera el límite de 10 MB.", 413)
+    content = await read_limited(archivo, 10 * 1024 * 1024, "El catálogo supera el límite de 10 MB.")
     rows = parse_provider_file(archivo.filename or "catalogo.xlsx", content)
     preview = preview_provider_import(conn, rows)
     if not confirmar:
@@ -1130,12 +1158,9 @@ async def preview_sales_file(
     is_xlsx = suffix == ".xlsx" and archivo.content_type in {xlsx_type, "application/octet-stream"}
     if archivo.content_type not in image_types and not is_xlsx:
         raise DomainError("El archivo de ventas debe ser PNG, JPG, WEBP o XLSX.", 415)
-    content = await archivo.read()
-    await archivo.close()
+    content = await read_limited(archivo, 12 * 1024 * 1024, "El archivo supera el límite de 12 MB.")
     if not content:
         raise DomainError("El archivo está vacío.", 422)
-    if len(content) > 12 * 1024 * 1024:
-        raise DomainError("El archivo supera el límite de 12 MB.", 413)
     branch = conn.execute(
         """
         SELECT id, clave, nombre, restaurante

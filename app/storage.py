@@ -8,6 +8,21 @@ from app.config import Settings
 from app.errors import DomainError
 
 
+async def read_limited(file: UploadFile, limit: int, message: str) -> bytes:
+    """Lee el archivo por partes y se detiene en cuanto supera `limit` (413), sin cargarlo entero."""
+    partes: list[bytes] = []
+    total = 0
+    try:
+        while chunk := await file.read(1024 * 1024):
+            total += len(chunk)
+            if total > limit:
+                raise DomainError(message, 413)
+            partes.append(chunk)
+    finally:
+        await file.close()
+    return b"".join(partes)
+
+
 async def save_upload(file: UploadFile, settings: Settings) -> tuple[Path, str, int]:
     extension = Path(file.filename or "factura").suffix.lower()
     xml_fallback = extension == ".xml" and file.content_type == "application/octet-stream"
