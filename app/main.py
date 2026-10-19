@@ -95,7 +95,7 @@ from app.schemas import (
     RechazarComprobanteRequest,
     SustituirComprobanteRequest,
 )
-from app.storage import read_limited, save_upload
+from app.storage import nombre_seguro, read_limited, ruta_almacenada, save_upload
 from app.ocr.paddle_engine import get_ocr_engine
 from app.sales_image import parse_sales_image
 from app.sales_xlsx import parse_sales_xlsx
@@ -248,7 +248,7 @@ async def upload_invoice(
         return create_invoice(
             conn,
             sucursal_clave=sucursal_clave,
-            filename=archivo.filename or path.name,
+            filename=nombre_seguro(archivo.filename, path.name),
             mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
             file_path=str(path.resolve()),
             sha256=digest,
@@ -287,7 +287,7 @@ async def upload_documents(
                 duplicate = register_hash_duplicate(
                     conn,
                     original_invoice_id=existing["id"],
-                    filename=archivo.filename or path.name,
+                    filename=nombre_seguro(archivo.filename, path.name),
                     file_path=str(path.resolve()),
                     sha256=digest,
                 )
@@ -300,7 +300,7 @@ async def upload_documents(
             row = create_invoice(
                 conn,
                 sucursal_clave=sucursal_clave,
-                filename=archivo.filename or path.name,
+                filename=nombre_seguro(archivo.filename, path.name),
                 mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
                 file_path=str(path.resolve()),
                 sha256=digest,
@@ -360,7 +360,7 @@ def duplicate_file(
     ).fetchone()
     if not row:
         raise DomainError("Duplicado no encontrado.", 404)
-    path = Path(row["archivo_url"]).resolve()
+    path = ruta_almacenada(row["archivo_url"], settings.upload_dir)
     upload_root = settings.upload_dir.resolve()
     if not path.is_relative_to(upload_root) or not path.is_file():
         raise DomainError("El archivo duplicado no está disponible.", 404)
@@ -376,7 +376,7 @@ def duplicate_file(
     return FileResponse(
         path,
         media_type=tipo,
-        filename=row["archivo_nombre"],
+        filename=nombre_seguro(row["archivo_nombre"]),
         content_disposition_type=disposicion(tipo),
     )
 
@@ -392,7 +392,7 @@ def discard_duplicates(
     upload_root = settings.upload_dir.resolve()
     removed_files = 0
     for row in rows:
-        path = Path(row["archivo_url"]).resolve()
+        path = ruta_almacenada(row["archivo_url"], settings.upload_dir)
         if path.is_relative_to(upload_root) and path.is_file():
             path.unlink()
             removed_files += 1
@@ -485,7 +485,7 @@ def delete_invoices(
     removed_paths = result.pop("archivos") + result.pop("lotes_eliminados")
     parent_dirs: set[Path] = set()
     for raw_path in removed_paths:
-        path = Path(raw_path).resolve()
+        path = ruta_almacenada(raw_path, settings.upload_dir)
         if path.is_relative_to(upload_root) and path.is_file():
             parent_dirs.add(path.parent)
             path.unlink()
@@ -521,14 +521,14 @@ def invoice_file(
     ).fetchone()
     if not row:
         raise DomainError("Factura no encontrada.", 404)
-    path = Path(row["archivo_url"]).resolve()
+    path = ruta_almacenada(row["archivo_url"], settings.upload_dir)
     upload_root = settings.upload_dir.resolve()
     if not path.is_relative_to(upload_root) or not path.is_file():
         raise DomainError("El archivo de la factura no está disponible.", 404)
     return FileResponse(
         path,
         media_type=row["archivo_mime"],
-        filename=row["archivo_nombre"],
+        filename=nombre_seguro(row["archivo_nombre"]),
         content_disposition_type=disposicion(row["archivo_mime"]),
     )
 
@@ -601,7 +601,7 @@ async def create_receipt(
             saved_path, digest, _ = await save_upload(evidencia, settings)
             evidence = {
                 "path": str(saved_path.resolve()),
-                "name": evidencia.filename,
+                "name": nombre_seguro(evidencia.filename, "evidencia"),
                 "mime": evidencia.content_type or "application/octet-stream",
                 "sha256": digest,
             }
@@ -700,7 +700,7 @@ def receipt_evidence(
     path = path.resolve()
     if not path.is_relative_to(settings.upload_dir.resolve()) or not path.is_file():
         raise DomainError("La evidencia no está disponible.", 404)
-    return FileResponse(path, media_type=mime, filename=name, content_disposition_type=disposicion(mime))
+    return FileResponse(path, media_type=mime, filename=nombre_seguro(name), content_disposition_type=disposicion(mime))
 
 
 @app.get("/api/v1/proveedores", tags=["catalogos"])
@@ -1243,7 +1243,7 @@ async def upload_batch(
             batch_id=batch_id,
             sucursal_clave=sucursal_clave,
             original_path=str(original_path.resolve()),
-            original_name=archivo.filename or "lote.pdf",
+            original_name=nombre_seguro(archivo.filename, "lote.pdf"),
             original_sha256=digest,
             created_by=actor_o(creada_por),
             pages=pages,
@@ -1324,7 +1324,7 @@ def delete_cancelled_batch(
     removed_paths = result.pop("archivos") + result.pop("lotes_eliminados")
     parent_dirs: set[Path] = set()
     for raw_path in removed_paths:
-        path = Path(raw_path).resolve()
+        path = ruta_almacenada(raw_path, settings.upload_dir)
         if path.is_relative_to(upload_root) and path.is_file():
             parent_dirs.add(path.parent)
             path.unlink()

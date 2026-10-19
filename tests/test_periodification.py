@@ -6,6 +6,7 @@ from pathlib import Path
 import psycopg
 from fastapi.testclient import TestClient
 
+from app.storage import ruta_almacenada
 from app.config import get_settings
 from app.main import app
 from app.periodification import allocate_period, weeks_for_period
@@ -20,7 +21,7 @@ def cleanup():
     paths = []
     with conexion_pruebas() as conn:
         paths = [
-            Path(row[0]) for row in conn.execute(
+            ruta_almacenada(row[0], get_settings().upload_dir) for row in conn.execute(
                 "SELECT archivo_url FROM core.facturas WHERE creada_por = 'pytest-periodificacion'"
             ).fetchall()
         ]

@@ -25,9 +25,11 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from pypdf.errors import PyPdfError
 
+from app.config import get_settings
 from app.database import conectar
 from app.errors import DomainError
 from app.ocr_processing import persist_ocr_result
+from app.storage import ruta_almacenada
 
 log = logging.getLogger("facturas.ocr_queue")
 
@@ -432,7 +434,7 @@ def _handle_job(
             from app.text_processing import get_text_engine
 
             engine = get_text_engine()
-        document = engine.read(job["archivo_url"])
+        document = engine.read(str(ruta_almacenada(job["archivo_url"], get_settings().upload_dir)))
     except Exception as exc:
         keeper.stop()
         log.warning("Trabajo %s (intento %s) falló al leer: %s", job["id"], job["intentos"], exc)

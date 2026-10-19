@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfReader, PdfWriter
 
 from app.config import get_settings
+from app.storage import ruta_almacenada
 from app.main import app
 from apoyo_db import conexion_pruebas
 
@@ -46,7 +47,7 @@ def cleanup_batches():
         conn.execute("DELETE FROM audit.documentos_eliminados WHERE eliminado_por = 'pytest-pdf'")
     directories = set()
     for raw_path in paths:
-        path = Path(raw_path)
+        path = ruta_almacenada(raw_path, get_settings().upload_dir)
         directories.add(path.parent)
         path.unlink(missing_ok=True)
     upload_root = get_settings().upload_dir.resolve()
@@ -82,7 +83,8 @@ def test_multipage_pdf_creates_one_invoice_per_page():
                 (result["id"],),
             ).fetchall()
         assert [row[0] for row in rows] == [1, 2, 3]
-        assert all(len(PdfReader(row[1]).pages) == 1 for row in rows)
+        assert all(not Path(row[1]).is_absolute() for row in rows)  # se guarda relativa al directorio del cliente
+        assert all(len(PdfReader(ruta_almacenada(row[1], get_settings().upload_dir)).pages) == 1 for row in rows)
     finally:
         cleanup_batches()
 
