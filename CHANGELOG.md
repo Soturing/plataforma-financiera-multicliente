@@ -35,8 +35,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   TLS, plano de control de producción, preparación de Ubuntu, arranque tras reinicio y temporizadores de
   respaldo, restauración e inactividad. Recomendación de VPS y bucket y guía en
   `docs/seguridad/despliegue-servidor.md`.
+- **Auditoría de sólo anexado (migración 034, D-027):** las correcciones, los cambios de catálogo y los
+  documentos eliminados ya no se pueden modificar ni borrar, ni siquiera con la cuenta propietaria; una
+  factura con correcciones ya no se puede eliminar (la bandeja lo avisa en lugar de borrar su historial).
+- **`python -m app.plataforma.tenants migrar --clave <CLIENTE>`:** aplica las migraciones pendientes a un
+  cliente ya dado de alta.
+- **Integración continua** (`.github/workflows/ci.yml`): suite completa contra una base desechable con RLS,
+  búsqueda de secretos con gitleaks y escaneo informativo de dependencias y código.
+- **Hoja de ruta integrada** con la auditoría de seguridad y de base de datos (`docs/roadmap-producto.md`).
 
 ### Corregido
+
+- El catálogo de proveedores en XLSX rechaza declaraciones XML (`DOCTYPE`/`ENTITY`) y los XLSX de proveedores
+  y de ventas se rechazan si descomprimidos superan 50 MB.
+- PostgreSQL del `compose.yaml` de desarrollo sólo escucha en `127.0.0.1`.
 
 - `numpy` y `Pillow` se importaban sin estar declarados en `requirements.txt`.
 

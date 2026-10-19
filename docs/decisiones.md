@@ -242,3 +242,11 @@ Estado: adoptada (2026-10-18). Detalle en `docs/seguridad/despliegue-servidor.md
 - Caddy es el único servicio público (TLS automático); cada cliente tiene su subdominio y Keycloak sólo expone la pantalla de acceso.
 - Tras un reinicio, una persona abre OpenBao y levanta los clientes (`deploy/servidor/arrancar.sh`).
 - Recomendación de proveedores: VPS en Hetzner (EE. UU. Este) salvo requisito de residencia en México (AWS mx-central-1); respaldos en Backblaze B2 con Object Lock, proveedor distinto al del VPS.
+
+## D-027 — Auditoría de sólo anexado y facturas con correcciones
+
+Estado: adoptada (2026-10-19). Detalle en `docs/roadmap-producto.md` §2.3 y §3.8.
+
+- **Una factura con correcciones no se borra:** `audit.correcciones` referencia facturas y revisiones con `ON DELETE RESTRICT` (antes `CASCADE` borraba el historial). La bandeja responde 409.
+- **Auditoría de sólo anexado también para la propietaria:** triggers en `audit.correcciones`, `audit.cambios_catalogo` y `audit.documentos_eliminados` (y sin `DELETE` en `audit.aprendizajes`). La única salida es que la propietaria declare `audit.purga = 'on'` en su sesión (limpieza de pruebas y futura política de retención).
+- **Tolerancia en centavos** del futuro `CHECK` de totales: flexible hasta tener datos de producción; se fija después.
