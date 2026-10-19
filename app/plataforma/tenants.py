@@ -32,6 +32,7 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from app import migraciones
 from app.plataforma import secretos
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -261,25 +262,9 @@ def base_inicializada(env: dict[str, str]) -> bool:
 
 def aplicar_migraciones(env: dict[str, str], *, hasta_previas: str | None = None) -> list[str]:
     """Aplica en orden las migraciones pendientes como propietaria y las registra."""
-    archivos = sorted(MIGRACIONES.glob("*.sql"))
-    aplicadas: list[str] = []
-    with conectar(url_base(env, "tenant_owner", "TENANT_OWNER_PASSWORD"), autocommit=True) as c:
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS public.migraciones_aplicadas (nombre text PRIMARY KEY, aplicada_en timestamptz NOT NULL DEFAULT now())"
-        )
-        if hasta_previas:
-            for a in archivos:
-                if a.name[:3] <= hasta_previas:
-                    c.execute("INSERT INTO public.migraciones_aplicadas (nombre) VALUES (%s) ON CONFLICT DO NOTHING", (a.name,))
-        hechas = {f["nombre"] for f in c.execute("SELECT nombre FROM public.migraciones_aplicadas").fetchall()}
-        for a in archivos:
-            if a.name in hechas:
-                continue
-            with c.transaction():
-                c.execute(a.read_text(encoding="utf-8"))
-                c.execute("INSERT INTO public.migraciones_aplicadas (nombre) VALUES (%s)", (a.name,))
-            aplicadas.append(a.name)
-    return aplicadas
+    return migraciones.aplicar(
+        url_base(env, "tenant_owner", "TENANT_OWNER_PASSWORD"), carpeta=MIGRACIONES, hasta_previas=hasta_previas
+    )
 
 
 def fijar_identidad(env: dict[str, str], clave: str) -> None:

@@ -51,7 +51,7 @@ docker compose --profile identidad up -d identidad correo-pruebas   # Keycloak :
 - Postgres propio en **puerto 5434** (`.env`, ignorado por git). Los contenedores `factaut-postgres-1` (5432) y `factaut-control-postgres-1` (5433) son de la versión anterior y pueden tener datos viejos (semanas 32–40 de 2026): **no tocarlos**.
 - Se parte de base limpia. Si aparecen datos de las semanas 32–40 de 2026, son contaminación.
 - pytest en Windows: usar `--basetemp "$env:TEMP\pt-fa"` (el temp por defecto da PermissionError).
-- Si se añade una migración nueva, también hay que registrarla en `compose.yaml` (lista de `initdb.d`).
+- Una migración nueva sólo necesita su archivo en `db/migrations/`: el único aplicador es `app/migraciones.py` (`python -m app.migraciones aplicar --url ...`; en clientes, `tenants migrar`). El `compose.yaml` ya no monta migraciones.
 - Bugs de OCR: se reproducen con documentos reales que el usuario deja en una carpeta local ignorada por git; solo fixtures sintéticos/anonimizados llegan a `tests/`.
 
 ## Forma de trabajar
