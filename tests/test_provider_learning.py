@@ -60,6 +60,10 @@ def cleanup_learning_data():
             (TEST_ACTOR,),
         )
         conn.execute(
+            "DELETE FROM audit.correcciones WHERE factura_id IN (SELECT id FROM core.facturas WHERE creada_por = %s)",
+            (TEST_ACTOR,),
+        )
+        conn.execute(
             "DELETE FROM core.facturas WHERE creada_por = %s",
             (TEST_ACTOR,),
         )

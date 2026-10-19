@@ -7,6 +7,7 @@ Uso:
         --archivos-desde ../otra/data/uploads
     python -m app.plataforma.tenants servir --clave GRUPO-DEMO
     python -m app.plataforma.tenants verificar --clave GRUPO-DEMO
+    python -m app.plataforma.tenants migrar --clave GRUPO-DEMO
     python -m app.plataforma.tenants pruebas --clave GRUPO-DEMO -q --basetemp "%TEMP%/pt-fa"
 
 Cada cliente tiene su archivo privado `config/tenants/private/<CLAVE>.env` (ignorado
@@ -494,6 +495,13 @@ def desplegar(args: argparse.Namespace) -> int:
     return 0
 
 
+def migrar(args: argparse.Namespace) -> int:
+    """Aplica las migraciones pendientes de un cliente ya dado de alta (como propietaria)."""
+    aplicadas = aplicar_migraciones(entorno(args.clave.upper()))
+    print("Migraciones aplicadas: " + (", ".join(aplicadas) if aplicadas else "ninguna; la base estaba al día"))
+    return 0
+
+
 def pruebas(args: argparse.Namespace, extra: list[str]) -> int:
     """Corre pytest contra el data plane del cliente: la app con tenant_runtime (RLS) y la
     preparación/limpieza de datos de prueba como propietaria (tests/apoyo_db.py)."""
@@ -528,6 +536,8 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--imagen", help="Imagen del backend (por omisión facturas-app:sin-ocr)")
     m = sub.add_parser("migrar-secretos", help="Mueve las contraseñas de un cliente existente a OpenBao")
     m.add_argument("--clave", required=True)
+    g = sub.add_parser("migrar", help="Aplica a la base del cliente las migraciones que le falten")
+    g.add_argument("--clave", required=True)
     p = sub.add_parser("pruebas", help="Corre pytest contra el data plane del cliente (argumentos extra van a pytest)")
     p.add_argument("--clave", required=True)
     args, extra = parser.parse_known_args(argv)
@@ -540,6 +550,8 @@ def main(argv: list[str] | None = None) -> int:
             return servir(args)
         if args.comando == "pruebas":
             return pruebas(args, extra)
+        if args.comando == "migrar":
+            return migrar(args)
         if args.comando == "desplegar":
             return desplegar(args)
         if args.comando == "migrar-secretos":

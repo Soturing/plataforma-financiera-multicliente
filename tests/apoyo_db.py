@@ -17,5 +17,6 @@ from app.config import get_settings
 def conexion_pruebas(**kwargs) -> psycopg.Connection:
     settings = get_settings()
     url = os.environ.get("TENANT_OWNER_URL") or settings.database_url
-    opciones = f"-c app.tenant={settings.tenant_clave} -c app.sucursales=*"
+    # audit.purga: la limpieza puede borrar filas de prueba de la auditoría de sólo anexado (034).
+    opciones = f"-c app.tenant={settings.tenant_clave} -c app.sucursales=* -c audit.purga=on"
     return psycopg.connect(url, options=opciones, **kwargs)

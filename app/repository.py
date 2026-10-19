@@ -401,6 +401,12 @@ def delete_pending_invoices(
     ).fetchone()["total"]
     if final_count:
         raise DomainError("Hay documentos publicados en Analytics; no se pueden eliminar.", 409)
+    corrected = conn.execute(
+        "SELECT count(*) AS total FROM audit.correcciones WHERE factura_id = ANY(%s::uuid[])",
+        (unique_ids,),
+    ).fetchone()["total"]
+    if corrected:
+        raise DomainError("Hay documentos con correcciones registradas; no se pueden eliminar.", 409)
 
     with conn.cursor() as cursor:
         cursor.executemany(

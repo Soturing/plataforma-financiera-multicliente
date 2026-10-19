@@ -36,6 +36,8 @@ def cleanup_test_invoices():
             WHERE factura_id IN (SELECT id FROM core.facturas WHERE creada_por = 'pytest')
             """
         )
+        # Las correcciones impiden borrar la factura (034); la limpieza las purga antes.
+        conn.execute("DELETE FROM audit.correcciones WHERE factura_id IN (SELECT id FROM core.facturas WHERE creada_por = 'pytest')")
         conn.execute("DELETE FROM core.facturas WHERE creada_por = 'pytest'")
         conn.execute(
             """
