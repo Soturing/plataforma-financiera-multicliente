@@ -221,3 +221,13 @@ Dentro de un tenant, todos sus restaurantes y sucursales comparten la base, estr
 - RLS forzado por tenant y por sucursal es la segunda barrera dentro de la base: aunque el código omita un filtro, la base no devuelve filas fuera del alcance.
 
 La fase 5 crea el primer stack (`GRUPO-DEMO`) con una copia de la base 5434, que queda intacta para la línea `migrate-legacy`. El 8010 pasa a usar ese stack. Si un restaurante cambia de dueño, sus datos se extraen a un stack nuevo mediante un procedimiento puntual.
+
+## D-025 — OpenBao, claves por cliente y respaldos cifrados
+
+Estado: adoptada (2026-10-18). Detalle en `docs/seguridad/fase7-secretos-respaldos.md`.
+
+- **Secretos y claves:** OpenBao autoalojado con **desbloqueo manual** (3 llaves, se necesitan 2). Tras cada reinicio la app no obtiene secretos hasta que el director lo abre. El token raíz se revoca al inicializar.
+- **Claves por cliente:** dos claves Transit por cliente (`datos` y `respaldos`), no exportables, con rotación y bitácora de uso. Cada cliente tiene identidades propias para su app y sus respaldos, que sólo acceden a lo suyo.
+- **Respaldos:** restic, un repositorio por cliente, diario (pérdida máxima 24 h). Destino S3 con Object Lock y retención por ciclo de vida del bucket (30 diarios, 12 mensuales, 7 anuales, sujeto a validación legal). En desarrollo, rest-server en modo sólo anexado. Prueba de restauración trimestral en una base desechable.
+- **Archivos en reposo:** cifrado por cliente a nivel de sistema de archivos (gocryptfs) en el servidor, con su clave envuelta por la clave `datos` del cliente. Sustituye la propuesta inicial de cifrar en la app, que habría obligado a dejar copias descifradas temporales en unos 80 puntos de lectura.
+- **VPS:** proveedor por definir; el diseño no depende de uno en particular.

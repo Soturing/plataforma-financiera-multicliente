@@ -2,7 +2,7 @@
 
 Plataforma financiera para restaurantes: carga de facturas → OCR → interpretación → revisión humana → factura final → analytics/Excel/PDF. Ya se ha operado en producción: **decisiones simples y salidas rápidas**. No sobre-ingenierizar.
 
-Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-024) y `docs/roadmap-producto.md`. Este archivo es solo un resumen operativo; si algo contradice a esos documentos, mandan ellos.
+Fuente de verdad documental: `README.md`, `docs/decisiones.md` (D-001…D-025) y `docs/roadmap-producto.md`. Este archivo es solo un resumen operativo; si algo contradice a esos documentos, mandan ellos.
 
 ## Stack
 - Python + FastAPI (`app/main.py`), PostgreSQL 15+ (docker `compose.yaml`), front estático sin build (`app/static/`: `index.html`, `app.js`, `styles.css`).
@@ -39,12 +39,13 @@ docker compose --profile identidad up -d identidad correo-pruebas   # Keycloak :
 ## Seguridad y datos
 - **Nunca versionar datos, entregables ni documentos reales de clientes** (`docs/seguridad/politica-repositorio.md`, hook `.githooks/pre-commit`, `scripts/check_repo_safety.ps1`). Usar solo datos sintéticos.
 - No imprimir ni commitear secretos; `.env` está fuera de git.
-- Usuarios, roles y multi-tenant: **en construcción** según `docs/seguridad/plan-implementacion.md` (D-018 a D-024). Fases 1–6 hechas (`app/seguridad/`, `db/control/`, `app/plataforma/`); la app corre en modo abierto (D-022). **Toda ruta nueva debe clasificarse en `app/seguridad/politica.py`** (módulo, acción, nivel y `sucursal_param`) o se deniega y fallan las pruebas. `codex/security-foundation` es legado y no se reutiliza. Bloqueo por pago: diseñado, no implementado. Ya no es una demo de salida rápida: el aislamiento fuerte por cliente (D-016) y las medidas de seguridad **sí se implementan**. Esa arquitectura conviene trabajarla en una sesión con Opus.
+- Usuarios, roles y multi-tenant: **en construcción** según `docs/seguridad/plan-implementacion.md` (D-018 a D-024). Fases 1–6 y la primera parte de la 7 hechas (`app/seguridad/`, `db/control/`, `app/plataforma/`); la app corre en modo abierto (D-022). **Toda ruta nueva debe clasificarse en `app/seguridad/politica.py`** (módulo, acción, nivel y `sucursal_param`) o se deniega y fallan las pruebas. `codex/security-foundation` es legado y no se reutiliza. Bloqueo por pago: diseñado, no implementado. Ya no es una demo de salida rápida: el aislamiento fuerte por cliente (D-016) y las medidas de seguridad **sí se implementan**. Esa arquitectura conviene trabajarla en una sesión con Opus.
 - El historial "rápido" del proyecto anterior no justifica atajos nuevos en seguridad.
 
 ## Entorno local (este worktree)
 - La app que el usuario revisa corre en **http://127.0.0.1:8010** desde este worktree con `python -m app.plataforma.tenants servir --clave GRUPO-DEMO` (data plane propio en 5440, D-024). El puerto 8000 es legado y está apagado; no volver a levantarlo. La base 5434 es de `migrate-legacy`: no tocarla.
-- Plano de control en 5436 (`control_app`), Keycloak en 8180, Mailpit en 8025 (perfil `identidad`). Cliente ficticio de pruebas: `GRUPO-PRUEBA-B` (5441).
+- Plano de control en 5436 (`control_app`), Keycloak en 8180, Mailpit en 8025, OpenBao en 8200 y destino de respaldos en 8090 (perfil `identidad`). Cliente ficticio de pruebas: `GRUPO-PRUEBA-B` (5441).
+- **OpenBao queda sellado tras cada reinicio:** antes de `tenants servir` o de las pruebas, ejecutar `python -m app.plataforma.secretos abrir --desde-archivo`. Las contraseñas de las bases de los clientes están en OpenBao, no en `config/tenants/private/`.
 - Pruebas: `python -m app.plataforma.tenants pruebas --clave GRUPO-DEMO -q --basetemp "$env:TEMP\pt-fa"` (app con RLS como `tenant_runtime`). Toda conexión a la base de negocio pasa por `app.database.conectar`; en pruebas, por `tests/apoyo_db.conexion_pruebas`. Toda tabla nueva necesita política RLS (la verificación de `tenants` lo exige).
 - Postgres propio en **puerto 5434** (`.env`, ignorado por git). Los contenedores `factaut-postgres-1` (5432) y `factaut-control-postgres-1` (5433) son de la versión anterior y pueden tener datos viejos (semanas 32–40 de 2026): **no tocarlos**.
 - Se parte de base limpia. Si aparecen datos de las semanas 32–40 de 2026, son contaminación.

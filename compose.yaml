@@ -124,6 +124,36 @@ services:
       timeout: 5s
       retries: 10
 
+  # Gestor de secretos y claves por cliente (D-025). Tras cada reinicio queda SELLADO
+  # hasta abrirlo: python -m app.plataforma.secretos abrir
+  secretos:
+    profiles: ["identidad"]
+    image: quay.io/openbao/openbao:2.7.1
+    command: ["server"]
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+    cap_add: [IPC_LOCK]
+    ports:
+      - "127.0.0.1:${SECRETOS_PORT:-8200}:8200"
+    volumes:
+      - ./deploy/secretos/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - secretos_datos:/openbao/file
+      - secretos_auditoria:/openbao/logs
+    networks: [control]
+
+  # Sólo desarrollo: destino de respaldos en modo sólo anexado (equivalente local al
+  # bloqueo de objetos de S3). Producción: bucket S3 con Object Lock (D-025).
+  respaldos-destino:
+    profiles: ["identidad"]
+    image: restic/rest-server:0.14.0
+    environment:
+      OPTIONS: "--append-only --private-repos"
+    ports:
+      - "127.0.0.1:${RESPALDOS_PORT:-8090}:8000"
+    volumes:
+      - respaldos_datos:/data
+    networks: [control]
+
   # Sólo desarrollo: captura los correos de invitación para leerlos en
   # http://localhost:8025 y desde las pruebas. Nunca envía correo real.
   correo-pruebas:
@@ -142,3 +172,6 @@ volumes:
   postgres_data:
   identidad_postgres_data:
   control_postgres_data:
+  secretos_datos:
+  secretos_auditoria:
+  respaldos_datos:

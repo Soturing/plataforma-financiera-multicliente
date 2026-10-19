@@ -1,6 +1,6 @@
 # Plan de implementación: usuarios, acceso y aislamiento
 
-Estado: aprobado (2026-10-18). Fase 1 completada ([fase1-identidad.md](fase1-identidad.md)); fases 2 a 4 implementadas en modo abierto ([fases2-4-acceso.md](fases2-4-acceso.md)); fase 5 implementada ([fase5-data-plane.md](fase5-data-plane.md)); fase 6 implementada ([fase6-ciclo-vida.md](fase6-ciclo-vida.md)).
+Estado: aprobado (2026-10-18). Fase 1 completada ([fase1-identidad.md](fase1-identidad.md)); fases 2 a 4 implementadas en modo abierto ([fases2-4-acceso.md](fases2-4-acceso.md)); fase 5 implementada ([fase5-data-plane.md](fase5-data-plane.md)); fase 6 implementada ([fase6-ciclo-vida.md](fase6-ciclo-vida.md)); fase 7, primera parte: secretos, claves y respaldos ([fase7-secretos-respaldos.md](fase7-secretos-respaldos.md)).
 
 Base: D-016, D-018, D-019, D-020, D-021 y los documentos de esta carpeta. Cada fase termina con pruebas automáticas y sólo se da por cerrada cuando sus criterios de salida pasan.
 
@@ -82,7 +82,7 @@ Data plane del cliente   → vuelve a verificar el contexto firmado y aplica RLS
 
 ### Fase 7 — Antes de producción
 
-- Gestor de secretos y clave de cifrado por cliente (por decidir: OpenBao o sops + age).
+- Gestor de secretos y clave de cifrado por cliente: OpenBao (D-025), hecho en local.
 - Respaldos cifrados fuera del servidor y prueba de restauración.
 - Revisión de las amenazas con riesgo inicial ≥ 12 de `registro-amenazas.md` con su riesgo residual documentado.
 - Prueba de penetración externa.

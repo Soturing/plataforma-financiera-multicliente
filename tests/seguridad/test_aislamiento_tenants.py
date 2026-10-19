@@ -16,9 +16,12 @@ A, B = "GRUPO-DEMO", "GRUPO-PRUEBA-B"
 
 
 def _entorno(clave: str) -> dict[str, str]:
-    env = tenants.leer_entorno(tenants.ruta_entorno(clave))
-    if not env:
+    if not tenants.leer_entorno(tenants.ruta_entorno(clave)):
         pytest.skip(f"Data plane {clave} no dado de alta")
+    try:
+        env = tenants.entorno(clave)  # contraseñas desde OpenBao (D-025)
+    except Exception as error:
+        pytest.skip(f"Secretos de {clave} no disponibles: {error}")
     try:
         with tenants.conectar(env["FACTURAS_DATABASE_URL"], tenant=clave) as c:
             c.execute("SELECT 1")

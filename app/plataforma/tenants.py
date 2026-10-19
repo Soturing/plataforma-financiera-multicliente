@@ -31,6 +31,8 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from app.plataforma import secretos
+
 RAIZ = Path(__file__).resolve().parents[2]
 PRIVADO = RAIZ / "config" / "tenants" / "private"
 PLANTILLA = RAIZ / "deploy" / "tenant" / "compose.yaml"
@@ -60,12 +62,31 @@ def leer_entorno(ruta: Path) -> dict[str, str]:
     return valores
 
 
+SECRETOS = ("DP_ADMIN_PASSWORD", "TENANT_OWNER_PASSWORD", "TENANT_RUNTIME_PASSWORD", "TENANT_RESPALDO_PASSWORD")
+NO_SE_GUARDA = (*SECRETOS, "FACTURAS_DATABASE_URL")
+
+
+def escribir_entorno(clave: str, env: dict[str, str]) -> None:
+    """Archivo privado del cliente: configuración e identidades de arranque, nunca contraseñas de bases."""
+    PRIVADO.mkdir(parents=True, exist_ok=True)
+    ruta_entorno(clave).write_text(
+        "# Data plane del cliente. Privado: nunca versionar (politica-repositorio.md).\n"
+        "# Las contraseñas de las bases viven en OpenBao (D-025); aquí sólo hay configuración\n"
+        "# y las credenciales de arranque de la app y de los respaldos del cliente.\n"
+        + "".join(f"{k}={v}\n" for k, v in sorted(env.items()) if k not in NO_SE_GUARDA),
+        encoding="utf-8",
+    )
+
+
 def preparar_entorno(clave: str, nombre: str, puerto_db: int, puerto_app: int) -> dict[str, str]:
-    """Crea o completa el archivo privado del cliente; nunca rota secretos existentes."""
-    ruta = ruta_entorno(clave)
-    env = leer_entorno(ruta)
-    for k in ("DP_ADMIN_PASSWORD", "TENANT_OWNER_PASSWORD", "TENANT_RUNTIME_PASSWORD"):
-        env.setdefault(k, secrets.token_urlsafe(32))
+    """Configuración del cliente y sus contraseñas (de OpenBao, del archivo anterior o nuevas)."""
+    env = leer_entorno(ruta_entorno(clave))
+    try:
+        base = secretos.leer_base(clave)
+    except secretos.SecretosError:
+        base = {}
+    for k in SECRETOS:
+        env[k] = base.get(k.lower()) or env.get(k) or secrets.token_urlsafe(32)
     env.update({
         "DP_DB_PORT": str(puerto_db),
         "FACTURAS_TENANT_CLAVE": clave,
@@ -73,15 +94,73 @@ def preparar_entorno(clave: str, nombre: str, puerto_db: int, puerto_app: int) -
         "FACTURAS_APP_URL": f"http://127.0.0.1:{puerto_app}",
         "FACTURAS_APP_PORT": str(puerto_app),
         "FACTURAS_UPLOAD_DIR": (RAIZ / "data" / "tenants" / clave / "uploads").as_posix(),
-        "FACTURAS_DATABASE_URL": url_base(env, "tenant_runtime", "TENANT_RUNTIME_PASSWORD", puerto_db),
     })
-    PRIVADO.mkdir(parents=True, exist_ok=True)
-    ruta.write_text(
-        "# Data plane del cliente. Privado: nunca versionar (politica-repositorio.md).\n"
-        + "".join(f"{k}={v}\n" for k, v in sorted(env.items())),
-        encoding="utf-8",
-    )
+    env["FACTURAS_DATABASE_URL"] = url_base(env, "tenant_runtime", "TENANT_RUNTIME_PASSWORD", puerto_db)
     return env
+
+
+def entorno(clave: str) -> dict[str, str]:
+    """Configuración del archivo + contraseñas desde OpenBao (sólo para aprovisionar y verificar)."""
+    env = leer_entorno(ruta_entorno(clave))
+    if not env:
+        raise AltaError(f"No existe el cliente {clave}")
+    if not all(env.get(k) for k in SECRETOS):  # cliente ya migrado: las contraseñas están en OpenBao
+        base = secretos.leer_base(clave)
+        for k in SECRETOS:
+            # La cuenta de respaldos llegó después: si un cliente no la tiene, se crea en el siguiente
+            # `migrar-secretos`. Las demás contraseñas siempre deben existir.
+            env[k] = base.get(k.lower()) or (secrets.token_urlsafe(32) if k == "TENANT_RESPALDO_PASSWORD" else base[k.lower()])
+    env["FACTURAS_DATABASE_URL"] = url_base(env, "tenant_runtime", "TENANT_RUNTIME_PASSWORD")
+    return env
+
+
+def proteger_secretos(clave: str, env: dict[str, str]) -> None:
+    """Guarda las contraseñas en OpenBao, crea claves e identidades y limpia el archivo (D-025)."""
+    usuario_respaldo = clave.lower()
+    password_destino = env.get("RESPALDOS_DESTINO_PASSWORD") or secrets.token_urlsafe(32)
+    crear_usuario_respaldos(usuario_respaldo, password_destino)
+    crear_rol_respaldo(env)
+    identidades = secretos.preparar_cliente(
+        clave,
+        secretos_base={k.lower(): env[k] for k in SECRETOS},
+        secretos_app={"database_url": env["FACTURAS_DATABASE_URL"]},
+        respaldos={
+            "repositorio": f"rest:http://{usuario_respaldo}:{password_destino}@respaldos-destino:8000/{usuario_respaldo}/",
+            "destino": "rest-server (desarrollo, sólo anexado)",
+            "base_usuario": "tenant_respaldo",
+            "base_password": env["TENANT_RESPALDO_PASSWORD"],
+        },
+    )
+    env.pop("RESPALDOS_DESTINO_PASSWORD", None)
+    env.update({
+        "SECRETOS_APP_ROLE_ID": identidades["app"]["role_id"],
+        "SECRETOS_APP_SECRET_ID": identidades["app"]["secret_id"],
+        "SECRETOS_RESPALDOS_ROLE_ID": identidades["respaldos"]["role_id"],
+        "SECRETOS_RESPALDOS_SECRET_ID": identidades["respaldos"]["secret_id"],
+    })
+    escribir_entorno(clave, env)
+
+
+def crear_rol_respaldo(env: dict[str, str]) -> None:
+    """Cuenta de respaldo: sólo lectura de todo (pg_read_all_data) y BYPASSRLS para que pg_dump
+    copie todas las filas. Sin escritura, sin propiedad y usada sólo por el proceso automático."""
+    with conectar(url_base(env, "dp_admin", "DP_ADMIN_PASSWORD"), autocommit=True) as c:
+        existe = c.execute("SELECT 1 FROM pg_roles WHERE rolname = 'tenant_respaldo'").fetchone()
+        c.execute(sql.SQL("{} ROLE tenant_respaldo LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS PASSWORD {}").format(
+            sql.SQL("ALTER" if existe else "CREATE"), sql.Literal(env["TENANT_RESPALDO_PASSWORD"])
+        ))
+        c.execute("GRANT pg_read_all_data TO tenant_respaldo")
+        c.execute("GRANT CONNECT ON DATABASE facturas TO tenant_respaldo")
+
+
+def crear_usuario_respaldos(usuario: str, password: str) -> None:
+    """Usuario propio del cliente en el destino de respaldos (sólo ve su repositorio)."""
+    r = subprocess.run(
+        ["docker", "compose", "--profile", "identidad", "exec", "-T", "respaldos-destino", "create_user", usuario, password],
+        capture_output=True, cwd=RAIZ,
+    )
+    if r.returncode != 0:
+        raise AltaError(f"No se pudo crear el usuario de respaldos: {r.stderr.decode(errors='replace')[-300:]}")
 
 
 def url_base(env: dict[str, str], usuario: str, clave_password: str, puerto: int | str | None = None) -> str:
@@ -98,7 +177,13 @@ def conectar(url: str, tenant: str | None = None, sucursales: str = "*", **kw) -
 # Contenedor
 
 
-def docker_compose(clave: str, *args: str, entrada: bytes | None = None, env_extra: dict | None = None) -> bytes:
+def docker_compose(clave: str, *args: str, entrada: bytes | None = None, env_extra: dict | None = None,
+                   env: dict[str, str] | None = None) -> bytes:
+    # Compose exige DP_ADMIN_PASSWORD para interpolar la plantilla; viene de memoria u OpenBao, no del archivo.
+    admin = (env or {}).get("DP_ADMIN_PASSWORD") or leer_entorno(ruta_entorno(clave)).get("DP_ADMIN_PASSWORD")
+    if not admin:
+        admin = secretos.leer_base(clave)["dp_admin_password"]
+    env_extra = {"DP_ADMIN_PASSWORD": admin, **(env_extra or {})}
     comando = [
         "docker", "compose", "-p", f"fa-{clave.lower()}", "-f", str(PLANTILLA),
         "--env-file", str(ruta_entorno(clave)), *args,
@@ -110,7 +195,7 @@ def docker_compose(clave: str, *args: str, entrada: bytes | None = None, env_ext
 
 
 def levantar_base(clave: str, env: dict[str, str]) -> None:
-    docker_compose(clave, "up", "-d", "db")
+    docker_compose(clave, "up", "-d", "db", env=env)
     admin = url_base(env, "dp_admin", "DP_ADMIN_PASSWORD")
     for _ in range(60):
         try:
@@ -284,7 +369,7 @@ def registrar_en_control(env: dict[str, str], clave: str, nombre: str) -> dict:
 
 def verificar(clave: str, env: dict[str, str] | None = None) -> list[str]:
     """Pruebas de aislamiento de la base del cliente. Devuelve los problemas (vacío = aprobado)."""
-    env = env or leer_entorno(ruta_entorno(clave))
+    env = env or entorno(clave)
     problemas: list[str] = []
     runtime = env["FACTURAS_DATABASE_URL"]
     with conectar(runtime) as c:
@@ -305,6 +390,11 @@ def verificar(clave: str, env: dict[str, str] | None = None) -> list[str]:
             problemas.append(f"Tablas sin RLS forzado: {[t['tabla'] for t in sin_rls]}")
         if c.execute("SELECT count(*) AS n FROM catalog.sucursales").fetchone()["n"]:
             problemas.append("Sin declarar tenant, la app ve filas")
+        con_bypass = [r["rolname"] for r in c.execute(
+            "SELECT rolname FROM pg_roles WHERE rolbypassrls AND NOT rolsuper AND rolname <> 'tenant_respaldo'"
+        ).fetchall()]
+        if con_bypass:
+            problemas.append(f"Cuentas que omiten RLS: {con_bypass}")
     with conectar(runtime, tenant="OTRO-CLIENTE") as c:
         if c.execute("SELECT count(*) AS n FROM catalog.sucursales").fetchone()["n"]:
             problemas.append("Con otro tenant declarado, la app ve filas")
@@ -360,6 +450,8 @@ def alta(args: argparse.Namespace) -> int:
             print(f"   ✗ {p}")
         print("El cliente NO se registra hasta corregir los problemas.")
         return 1
+    proteger_secretos(clave, env)
+    print("   Secretos y claves del cliente en OpenBao; el archivo privado ya no tiene contraseñas")
     print(f"7/7 Registro en el plano de control: {registrar_en_control(env, clave, args.nombre)}")
     print(f"Listo. Arranque: python -m app.plataforma.tenants servir --clave {clave}")
     return 0
@@ -370,12 +462,16 @@ def servir(args: argparse.Namespace) -> int:
     env = leer_entorno(ruta_entorno(clave))
     if not env:
         raise AltaError(f"No existe el cliente {clave}")
-    entorno = {**os.environ, **{k: v for k, v in env.items() if k.startswith("FACTURAS_")}}
+    entorno_app = {**os.environ, **{k: v for k, v in env.items() if k.startswith("FACTURAS_")}}
+    if env.get("SECRETOS_APP_ROLE_ID"):
+        # La app obtiene su conexión con SU identidad en OpenBao (no con la de plataforma).
+        app_secretos = secretos.secretos_app(clave, env["SECRETOS_APP_ROLE_ID"], env["SECRETOS_APP_SECRET_ID"])
+        entorno_app["FACTURAS_DATABASE_URL"] = app_secretos["database_url"]
     puerto = str(args.puerto or env["FACTURAS_APP_PORT"])
     comando = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", puerto]
     print(f"Sirviendo {clave} en http://127.0.0.1:{puerto} (base 127.0.0.1:{env['DP_DB_PORT']})", flush=True)
     try:
-        return subprocess.call(comando, env=entorno, cwd=RAIZ)
+        return subprocess.call(comando, env=entorno_app, cwd=RAIZ)
     except KeyboardInterrupt:  # Ctrl-C detiene uvicorn; no es un error
         return 0
 
@@ -384,13 +480,11 @@ def pruebas(args: argparse.Namespace, extra: list[str]) -> int:
     """Corre pytest contra el data plane del cliente: la app con tenant_runtime (RLS) y la
     preparación/limpieza de datos de prueba como propietaria (tests/apoyo_db.py)."""
     clave = args.clave.upper()
-    env = leer_entorno(ruta_entorno(clave))
-    if not env:
-        raise AltaError(f"No existe el cliente {clave}")
-    entorno = {**os.environ, **{k: v for k, v in env.items() if k.startswith("FACTURAS_")},
-               "TENANT_OWNER_URL": url_base(env, "tenant_owner", "TENANT_OWNER_PASSWORD"),
-               "FACTURAS_OCR_AUTOSTART_WORKERS": "false"}
-    return subprocess.call([sys.executable, "-m", "pytest", *(extra or ["-q"])], env=entorno, cwd=RAIZ)
+    env = entorno(clave)
+    entorno_pruebas = {**os.environ, **{k: v for k, v in env.items() if k.startswith("FACTURAS_")},
+                       "TENANT_OWNER_URL": url_base(env, "tenant_owner", "TENANT_OWNER_PASSWORD"),
+                       "FACTURAS_OCR_AUTOSTART_WORKERS": "false"}
+    return subprocess.call([sys.executable, "-m", "pytest", *(extra or ["-q"])], env=entorno_pruebas, cwd=RAIZ)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -411,6 +505,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--puerto", type=int)
     v = sub.add_parser("verificar", help="Ejecuta las pruebas de aislamiento de la base del cliente")
     v.add_argument("--clave", required=True)
+    m = sub.add_parser("migrar-secretos", help="Mueve las contraseñas de un cliente existente a OpenBao")
+    m.add_argument("--clave", required=True)
     p = sub.add_parser("pruebas", help="Corre pytest contra el data plane del cliente (argumentos extra van a pytest)")
     p.add_argument("--clave", required=True)
     args, extra = parser.parse_known_args(argv)
@@ -423,10 +519,15 @@ def main(argv: list[str] | None = None) -> int:
             return servir(args)
         if args.comando == "pruebas":
             return pruebas(args, extra)
+        if args.comando == "migrar-secretos":
+            clave = args.clave.upper()
+            proteger_secretos(clave, entorno(clave))
+            print(f"{clave}: contraseñas en OpenBao; archivo privado sin contraseñas")
+            return 0
         problemas = verificar(args.clave.upper())
         print("Aislamiento verificado" if not problemas else "\n".join(f"✗ {p}" for p in problemas))
         return 1 if problemas else 0
-    except AltaError as error:
+    except (AltaError, secretos.SecretosError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
 

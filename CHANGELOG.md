@@ -26,6 +26,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   reactivación, baja verificada y reingreso; sección "Mi cuenta" para agregar o dar de baja autenticadores;
   bloqueo tras entrar con código de recuperación hasta registrar una passkey nueva (método de acceso por `amr`);
   avisos por correo y tarea de inactividad. Detalle en `docs/seguridad/fase6-ciclo-vida.md`.
+- **Secretos, claves por cliente y respaldos (fase 7, D-025):** OpenBao con desbloqueo manual y claves Transit
+  por cliente; las contraseñas de las bases salen de los archivos privados; respaldos diarios cifrados con restic
+  (un repositorio por cliente, destino sólo anexado) y restauración de prueba en una base desechable.
+  Detalle en `docs/seguridad/fase7-secretos-respaldos.md`.
 
 ## [0.1.0] - 2026-10-18
 
