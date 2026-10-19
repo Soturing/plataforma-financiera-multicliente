@@ -37,7 +37,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
       - name: Base desechable con todas las migraciones
         run: python scripts/preparar_base_pruebas.py --puerto 5432 --admin-password dp_admin_ci
       # tests/identidad necesita Keycloak; las pruebas del plano de control se omiten solas sin su base.
@@ -60,8 +60,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pip-audit bandit
+      # Sólo las dos herramientas, con la versión fijada en requirements-dev.txt (sin instalar OCR).
+      - run: pip install $(grep -E '^(pip-audit|bandit)==' requirements-dev.txt)
       - name: Dependencias con vulnerabilidades conocidas
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r requirements-dev.txt
       - name: Análisis estático de Python
         run: bandit -q -r app -x app/static
