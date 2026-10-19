@@ -46,6 +46,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Límites de recursos (§3.6.7):** límite de peticiones por IP y por minuto (1200 en general, 30 en `/auth/*`,
+  configurable con `FACTURAS_LIMITE_PETICIONES_POR_MINUTO` y `FACTURAS_LIMITE_ACCESO_POR_MINUTO`, 0 lo apaga) con
+  respuesta 429 y `Retry-After`; el catálogo de proveedores y los archivos de ventas se leen por partes y se
+  cortan en el límite sin cargarse enteros; el compose del servidor fija memoria, CPU y procesos máximos para la
+  app y los workers (`APP_MEM_LIMIT`, `APP_CPUS`, `WORKERS_MEM_LIMIT`, `WORKERS_CPUS`).
+
 - **El acceso es seguro por defecto (D-028):** `FACTURAS_ACCESO_MODO` vale `seguro` si no se declara, y con
   `FACTURAS_ENVIRONMENT=produccion` la app no arranca en modo abierto. Para revisar pantallas sin sesión en
   desarrollo hay que escribir `FACTURAS_ACCESO_MODO=abierto` en el `.env`.
