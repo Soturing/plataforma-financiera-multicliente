@@ -51,6 +51,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   `--semilla ARCHIVO@NNN` para los datos de demostración y `--hasta-previas NNN` para adoptar una base ya
   migrada). El `compose.yaml` de desarrollo ya no monta archivos sueltos en `initdb.d`: una migración nueva sólo
   necesita su archivo en `db/migrations/`.
+- **Rutas relativas y nombres de archivo limpios (§3.6.8):** `archivo_url`, `archivo_original_url` y
+  `evidencia_url` se guardan relativos al directorio de archivos del cliente (`lotes/<id>/pagina-1.pdf`), no con
+  la ruta absoluta del servidor; las rutas absolutas ya guardadas siguen funcionando. Los nombres que manda el
+  cliente se limpian (sin directorios, comillas, `;` ni caracteres de control) al guardarlos y en
+  `Content-Disposition` (`app/storage.py`: `ruta_para_guardar`, `ruta_almacenada`, `nombre_seguro`).
 
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
