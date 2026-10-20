@@ -46,6 +46,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Revisión de `innerHTML` (§3.6.9):** se revisaron las 79 asignaciones y las 302 interpolaciones del front: todo
+  texto de la base que llega a HTML ya pasa por `escapeHtml`; el resto son números, constantes, identificadores del
+  servidor o `textContent`. No hizo falta cambiar `app.js`. `tests/test_front_seguro.py` evita que se regrese:
+  falla si un campo de texto libre se interpola sin escapar o si aparece un `<script>` o un manejador en línea
+  (que la CSP bloquearía).
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
