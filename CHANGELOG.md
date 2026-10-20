@@ -56,6 +56,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   la ruta absoluta del servidor; las rutas absolutas ya guardadas siguen funcionando. Los nombres que manda el
   cliente se limpian (sin directorios, comillas, `;` ni caracteres de control) al guardarlos y en
   `Content-Disposition` (`app/storage.py`: `ruta_para_guardar`, `ruta_almacenada`, `nombre_seguro`).
+- **Identidad estable junto a cada `*_por` (migración 035, §3.8.2):** las 29 columnas de operador de `audit`,
+  `catalog`, `core` y `finance` ganan un `<col>_id uuid` con el identificador de la identidad en el plano de
+  control. La app declara `app.identidad` al abrir la conexión y un trigger (`seguridad.completar_identidad`)
+  lo copia cuando se escribe o cambia la etiqueta; sin sesión (workers, modo abierto) queda vacío, y las filas
+  anteriores no se rellenan. Una prueba avisa si se añade un `*_por` sin su `_id`.
+- **Topes de `tenant_runtime` (§3.8.3):** `statement_timeout` de 120 s e `idle_in_transaction_session_timeout`
+  de 60 s, fijados al crear los roles y con `tenants migrar` en los clientes existentes.
 
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
