@@ -46,6 +46,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Pruebas de integridad de la base (§3.8.5):** `tests/test_integridad_bd.py` comprueba que las restricciones
+  existentes rechazan lo que deben (nómina con monto negativo, semana o año fuera de rango y duplicados; cierres de
+  comisiones con mes o importe inválidos; periodo invertido; RFC único y gasto fijo único por proveedor). Cada
+  prueba deshace su transacción.
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
