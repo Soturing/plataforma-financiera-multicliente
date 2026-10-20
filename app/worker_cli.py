@@ -21,6 +21,7 @@ import threading
 import time
 
 
+from app import registro
 from app.config import get_settings
 from app.database import conectar
 from app.ocr_queue import run_worker
@@ -133,10 +134,7 @@ def main() -> int:
     parser.add_argument("--procesos", type=int, help="workers del supervisor (por defecto FACTURAS_OCR_WORKERS)")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    registro.configurar(get_settings().log_json)
     if args.una_vez:
         return _run_single(drain=True)
     if args.hijo:

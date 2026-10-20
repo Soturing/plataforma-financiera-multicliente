@@ -5,6 +5,7 @@ el del receptor (`rr`) y el total (`tt`): datos sin ambigüedad que no dependen 
 Si `zxing-cpp` no está disponible la lectura se omite y el flujo sigue con OCR.
 """
 
+import logging
 import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -13,6 +14,8 @@ from urllib.parse import parse_qs, urlparse
 
 import fitz
 import numpy as np
+
+log = logging.getLogger("facturas.qr")
 
 try:  # dependencia opcional
     import zxingcpp
@@ -88,5 +91,6 @@ def read_file(path: str | Path) -> list[dict[str, Any]]:
                         results.append({**found, "page": 1})
                         break
     except Exception:
+        log.warning("Falló la decodificación del QR; se devuelven los resultados parciales", exc_info=True)
         return results
     return results

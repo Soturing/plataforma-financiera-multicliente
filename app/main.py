@@ -1,7 +1,9 @@
 import csv
 import io
+import logging
 import re
 import tempfile
+import time
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -19,6 +21,7 @@ from app.database import get_connection
 from app.seguridad.api import router as seguridad_router
 from app.seguridad.ciclo_vida import router as ciclo_vida_router
 from app.seguridad.autorizacion import actor_o, autorizar_ruta
+from app import registro
 from app.endurecimiento import CABECERAS_SEGURIDAD, disposicion, documentacion_activa
 from app.errors import DomainError
 from app.firma_archivos import CABECERA_MINIMA, TIPO_POR_MIME, verificar as verificar_firma
@@ -145,6 +148,8 @@ from app.provider_catalog import (
 
 
 _ajustes = get_settings()
+registro.configurar(_ajustes.log_json)
+log = logging.getLogger("facturas.acceso")
 _documentacion = documentacion_activa(_ajustes.environment, _ajustes.acceso_modo)
 
 app = FastAPI(
@@ -201,6 +206,30 @@ async def limite_de_peticiones(request, call_next):
                 headers={"Retry-After": str(espera)},
             )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def registro_de_peticiones(request, call_next):
+    """ID de correlación por petición: se acepta el del proxy si es válido, se devuelve en la
+    respuesta y acompaña cada renglón del registro y de la bitácora de seguridad."""
+    pid = registro.nuevo_peticion_id(request.headers.get("x-request-id"))
+    token = registro.peticion_id.set(pid)
+    inicio = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        log.exception("Error no controlado", extra={"metodo": request.method, "ruta": request.url.path})
+        raise
+    finally:
+        registro.peticion_id.reset(token)
+    response.headers["X-Request-ID"] = pid
+    if not request.url.path.startswith("/static/"):
+        log.info(
+            "%s %s -> %s", request.method, request.url.path, response.status_code,
+            extra={"peticion_id": pid, "metodo": request.method, "ruta": request.url.path,
+                   "estado": response.status_code, "ms": round((time.perf_counter() - inicio) * 1000)},
+        )
+    return response
 
 
 @app.middleware("http")
