@@ -82,6 +82,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   existentes rechazan lo que deben (nómina con monto negativo, semana o año fuera de rango y duplicados; cierres de
   comisiones con mes o importe inválidos; periodo invertido; RFC único y gasto fijo único por proveedor). Cada
   prueba deshace su transacción.
+- **Contenedores más cerrados (§3.6.7, hallazgo 11):** la app y los workers del servidor corren sin ninguna
+  capacidad de Linux (`cap_drop: ALL`) y con `no-new-privileges`; el API además con el sistema de archivos de
+  sólo lectura (escribe en `/tmp` y en el volumen de archivos del cliente). Comprobado arrancando la imagen así
+  y respondiendo `GET /`. Los workers quedan con sistema de archivos escribible: PaddleOCR guarda ahí sus modelos.
 
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
