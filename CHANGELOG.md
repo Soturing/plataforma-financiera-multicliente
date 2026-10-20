@@ -46,6 +46,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Dinero sin `float` y cobertura (§3.7.4):** el importe del comprobante en PDF se formatea con `Decimal`
+  (`money_text`, redondeo mitad hacia arriba, sin perder centavos en importes grandes); pruebas de que el reparto
+  de gastos fijos conserva el total exacto en 300 casos y de los redondeos del negocio (`tests/test_dinero.py`).
+  El CI mide la cobertura (hoy 65 %), la imprime y la guarda como artefacto, sin umbral. Los `float` que quedan
+  sólo alimentan series de gráficas.
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
