@@ -129,7 +129,8 @@ def save_periodification(
         ("factura_id", invoice_id) if invoice_id else ("comprobante_id", receipt_id)
     )
     current = conn.execute(
-        f"SELECT id FROM finance.periodificaciones_gasto WHERE {lookup_column} = %s",
+        f"SELECT id FROM finance.periodificaciones_gasto WHERE {lookup_column} = %s",  # nosec B608
+        # Motivo: columna elegida entre dos literales del código; el valor va como parámetro
         (lookup_value,),
     ).fetchone()
     if current:

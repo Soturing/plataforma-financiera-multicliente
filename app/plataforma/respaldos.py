@@ -130,7 +130,8 @@ def listar(clave: str) -> list[dict]:
 
 
 def _conteos(cursor_sql) -> dict[str, int]:
-    return {t: cursor_sql(f"SELECT count(*) FROM {t}") for t in TABLAS_VERIFICADAS}
+    return {t: cursor_sql(f"SELECT count(*) FROM {t}") for t in TABLAS_VERIFICADAS}  # nosec B608
+    # Motivo: tablas de la lista fija TABLAS_VERIFICADAS
 
 
 def probar_restauracion(clave: str) -> dict:

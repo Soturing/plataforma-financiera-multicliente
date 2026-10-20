@@ -278,7 +278,8 @@ def _catalog_id(conn: Connection, table: str, key: str | None, active: str) -> U
     if not key:
         return None
     row = conn.execute(
-        f"SELECT id FROM catalog.{table} WHERE upper(clave) = upper(%s) AND {active}",
+        f"SELECT id FROM catalog.{table} WHERE upper(clave) = upper(%s) AND {active}",  # nosec B608
+        # Motivo: tabla y filtro los fija el código que llama; la clave va como parámetro
         (key.strip(),),
     ).fetchone()
     if not row:

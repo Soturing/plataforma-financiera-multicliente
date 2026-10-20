@@ -675,7 +675,8 @@ def get_review_queue_summary(
             WHERE cdx.factura_id = f.id ORDER BY cdx.version DESC LIMIT 1
         ) cd ON true
         WHERE """
-        + " AND ".join(clauses),
+        + " AND ".join(clauses),  # nosec B608
+        # Motivo: cláusulas armadas con literales del código; los valores van como parámetros
         params,
     ).fetchone()
     total = row["total"]

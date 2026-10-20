@@ -62,7 +62,8 @@ def _catalog_id(conn: Connection, table: str, identifier: UUID, *, active: str) 
     if table not in allowed:
         raise RuntimeError("Catálogo no permitido")
     row = conn.execute(
-        f"SELECT id FROM {allowed[table]} WHERE id = %s AND {active}", (identifier,)
+        f"SELECT id FROM {allowed[table]} WHERE id = %s AND {active}", (identifier,)  # nosec B608
+        # Motivo: tabla de una lista blanca; el id va como parámetro
     ).fetchone()
     if not row:
         raise DomainError(f"El valor de {table} no existe o está inactivo.", 422)

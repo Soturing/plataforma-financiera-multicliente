@@ -129,7 +129,8 @@ def infer_branch_by_consumption(
         JOIN catalog.sucursales s ON s.id = r.sucursal_id AND s.activa
         WHERE r.activa AND r.producto_id = ANY(%s) {provider_filter}
         ORDER BY r.producto_id, r.sucursal_id, (r.proveedor_id IS NOT NULL) DESC, r.version DESC
-        """,
+        """,  # nosec B608
+        # Motivo: filtro armado con literales del propio código; los valores van como parámetros
         params,
     ).fetchall()
     if not rules:
