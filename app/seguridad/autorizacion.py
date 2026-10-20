@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 
+from app import registro
 from app.config import get_settings
 from app.database import rls_verificado, sucursales_actuales
 from app.seguridad import control, sesiones
@@ -104,7 +105,7 @@ async def autorizar_ruta(request: Request) -> None:
         token = request.cookies.get(sesiones.COOKIE)
         ctx, motivo = sesiones.resolver(conn, token, tenant)
         ip = control.ip_cliente(request)
-        peticion = request.headers.get("x-request-id") or uuid.uuid4().hex
+        peticion = registro.peticion_id.get() or uuid.uuid4().hex
 
         if ctx is None:
             if motivo == "otro_tenant":

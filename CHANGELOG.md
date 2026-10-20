@@ -46,6 +46,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Registro con ID de correlación (§3.7.5):** cada petición lleva un `X-Request-ID` (el del proxy si tiene forma
+  segura, o uno nuevo), que se devuelve en la respuesta, aparece en cada renglón del registro y es el
+  `peticion_id` de la bitácora de seguridad. `FACTURAS_LOG_JSON=true` (activo en el compose del servidor) escribe un
+  objeto JSON por renglón; en desarrollo sigue el texto legible. Las excepciones tragadas en la lectura del QR y la
+  detección de escaneos ahora dejan una advertencia (`app/registro.py`).
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
