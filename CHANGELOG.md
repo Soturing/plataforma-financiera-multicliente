@@ -77,6 +77,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 - El catálogo de proveedores en XLSX rechaza declaraciones XML (`DOCTYPE`/`ENTITY`) y los XLSX de proveedores
   y de ventas se rechazan si descomprimidos superan 50 MB.
 - PostgreSQL del `compose.yaml` de desarrollo sólo escucha en `127.0.0.1`.
+- Dependencias con CVE conocidos según `pip-audit`: `pypdf` 6.21.1, `starlette` 1.3.1 (vía `fastapi` 0.136.3,
+  que se mantiene así porque la 0.146 cambia `app.routes` y rompe la clasificación de rutas), `python-multipart`
+  0.0.31 y `pytest` 9.0.3.
 
 - `numpy` y `Pillow` se importaban sin estar declarados en `requirements.txt`.
 
