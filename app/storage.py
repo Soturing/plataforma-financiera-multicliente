@@ -1,4 +1,5 @@
 import hashlib
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,6 +8,46 @@ from fastapi import UploadFile
 from app.config import Settings
 from app.errors import DomainError
 from app.firma_archivos import EXTENSION_POR_TIPO, tipo_esperado, verificar
+
+
+def ruta_para_guardar(path: Path | str, upload_dir: Path) -> str:
+    """Valor que se guarda en la base: ruta relativa al directorio de archivos del cliente.
+
+    Así la base no revela la estructura del servidor y el almacenamiento puede cambiar de
+    lugar (anfitrión o contenedor) sin reescribir filas. Un archivo fuera de ese directorio
+    (datos heredados, pruebas) conserva su ruta tal cual.
+    """
+    try:
+        return Path(path).resolve().relative_to(upload_dir.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def ruta_almacenada(valor: str, upload_dir: Path) -> Path:
+    """Ruta real de un archivo guardado: relativa al directorio del cliente, o absoluta si es un dato heredado.
+
+    Quien la use debe seguir comprobando que el resultado queda dentro de `upload_dir`
+    (`is_relative_to`): una ruta relativa con `..` se resuelve aquí y esa comprobación la rechaza.
+    """
+    ruta = Path(valor)
+    return (ruta if ruta.is_absolute() else upload_dir / ruta).resolve()
+
+
+_NOMBRE_PROHIBIDO = re.compile(r'[\x00-\x1f\x7f"\\/:*?<>|;]+')
+
+
+def nombre_seguro(nombre: str | None, defecto: str = "documento", maximo: int = 120) -> str:
+    """Nombre de archivo apto para guardar y para `Content-Disposition`.
+
+    Sin directorios, comillas, separadores ni caracteres de control; recortado conservando la extensión.
+    """
+    base = _NOMBRE_PROHIBIDO.sub("_", (nombre or "").replace("\\", "/").rsplit("/", 1)[-1]).strip(" .")
+    if not base:
+        return defecto
+    if len(base) > maximo:
+        extension = Path(base).suffix[:10]
+        base = base[: maximo - len(extension)] + extension
+    return base
 
 
 async def read_limited(file: UploadFile, limit: int, message: str) -> bytes:

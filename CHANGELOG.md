@@ -46,6 +46,52 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Un solo aplicador de migraciones (§3.7.3):** `app/migraciones.py` lo usan los clientes (`tenants`), la base
+  desechable del CI y la base de desarrollo (`python -m app.migraciones aplicar --url ...`, con
+  `--semilla ARCHIVO@NNN` para los datos de demostración y `--hasta-previas NNN` para adoptar una base ya
+  migrada). El `compose.yaml` de desarrollo ya no monta archivos sueltos en `initdb.d`: una migración nueva sólo
+  necesita su archivo en `db/migrations/`.
+- **Rutas relativas y nombres de archivo limpios (§3.6.8):** `archivo_url`, `archivo_original_url` y
+  `evidencia_url` se guardan relativos al directorio de archivos del cliente (`lotes/<id>/pagina-1.pdf`), no con
+  la ruta absoluta del servidor; las rutas absolutas ya guardadas siguen funcionando. Los nombres que manda el
+  cliente se limpian (sin directorios, comillas, `;` ni caracteres de control) al guardarlos y en
+  `Content-Disposition` (`app/storage.py`: `ruta_para_guardar`, `ruta_almacenada`, `nombre_seguro`).
+- **Identidad estable junto a cada `*_por` (migración 035, §3.8.2):** las 29 columnas de operador de `audit`,
+  `catalog`, `core` y `finance` ganan un `<col>_id uuid` con el identificador de la identidad en el plano de
+  control. La app declara `app.identidad` al abrir la conexión y un trigger (`seguridad.completar_identidad`)
+  lo copia cuando se escribe o cambia la etiqueta; sin sesión (workers, modo abierto) queda vacío, y las filas
+  anteriores no se rellenan. Una prueba avisa si se añade un `*_por` sin su `_id`.
+- **Topes de `tenant_runtime` (§3.8.3):** `statement_timeout` de 120 s e `idle_in_transaction_session_timeout`
+  de 60 s, fijados al crear los roles y con `tenants migrar` en los clientes existentes.
+- **`bandit` limpio y bloqueante:** los 52 hallazgos se resolvieron o se justificaron con `# nosec` (consultas
+  armadas con literales del código, parámetros de la API de OpenBao, bind en contenedor); `bandit.yaml` omite sólo
+  B404/B603/B607 (uso de `subprocess` con lista de argumentos). El job `escaneo` del CI deja de ser informativo.
+- **XML:** `xml_seguro` busca `DOCTYPE`/`ENTITY` en todo el contenido (antes sólo en los primeros 8 KB, y un
+  comentario largo lo esquivaba) y rechaza UTF-16/UTF-32; el lector de CFDI (`text_processing`) usa el mismo helper.
+- **Registro con ID de correlación (§3.7.5):** cada petición lleva un `X-Request-ID` (el del proxy si tiene forma
+  segura, o uno nuevo), que se devuelve en la respuesta, aparece en cada renglón del registro y es el
+  `peticion_id` de la bitácora de seguridad. `FACTURAS_LOG_JSON=true` (activo en el compose del servidor) escribe un
+  objeto JSON por renglón; en desarrollo sigue el texto legible. Las excepciones tragadas en la lectura del QR y la
+  detección de escaneos ahora dejan una advertencia (`app/registro.py`).
+- **Dinero sin `float` y cobertura (§3.7.4):** el importe del comprobante en PDF se formatea con `Decimal`
+  (`money_text`, redondeo mitad hacia arriba, sin perder centavos en importes grandes); pruebas de que el reparto
+  de gastos fijos conserva el total exacto en 300 casos y de los redondeos del negocio (`tests/test_dinero.py`).
+  El CI mide la cobertura (hoy 65 %), la imprime y la guarda como artefacto, sin umbral. Los `float` que quedan
+  sólo alimentan series de gráficas.
+- **Pruebas de integridad de la base (§3.8.5):** `tests/test_integridad_bd.py` comprueba que las restricciones
+  existentes rechazan lo que deben (nómina con monto negativo, semana o año fuera de rango y duplicados; cierres de
+  comisiones con mes o importe inválidos; periodo invertido; RFC único y gasto fijo único por proveedor). Cada
+  prueba deshace su transacción.
+- **Contenedores más cerrados (§3.6.7, hallazgo 11):** la app y los workers del servidor corren sin ninguna
+  capacidad de Linux (`cap_drop: ALL`) y con `no-new-privileges`; el API además con el sistema de archivos de
+  sólo lectura (escribe en `/tmp` y en el volumen de archivos del cliente). Comprobado arrancando la imagen así
+  y respondiendo `GET /`. Los workers quedan con sistema de archivos escribible: PaddleOCR guarda ahí sus modelos.
+- **Revisión de `innerHTML` (§3.6.9):** se revisaron las 79 asignaciones y las 302 interpolaciones del front: todo
+  texto de la base que llega a HTML ya pasa por `escapeHtml`; el resto son números, constantes, identificadores del
+  servidor o `textContent`. No hizo falta cambiar `app.js`. `tests/test_front_seguro.py` evita que se regrese:
+  falla si un campo de texto libre se interpola sin escapar o si aparece un `<script>` o un manejador en línea
+  (que la CSP bloquearía).
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
@@ -77,6 +123,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 - El catálogo de proveedores en XLSX rechaza declaraciones XML (`DOCTYPE`/`ENTITY`) y los XLSX de proveedores
   y de ventas se rechazan si descomprimidos superan 50 MB.
 - PostgreSQL del `compose.yaml` de desarrollo sólo escucha en `127.0.0.1`.
+- Dependencias con CVE conocidos según `pip-audit`: `pypdf` 6.21.1, `starlette` 1.3.1 (vía `fastapi` 0.136.3,
+  que se mantiene así porque la 0.146 cambia `app.routes` y rompe la clasificación de rutas), `python-multipart`
+  0.0.31 y `pytest` 9.0.3.
 
 - `numpy` y `Pillow` se importaban sin estar declarados en `requirements.txt`.
 

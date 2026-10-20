@@ -7,9 +7,11 @@ from uuid import UUID
 
 from psycopg import Connection
 
+from app.config import get_settings
 from app.errors import DomainError
 from app.fixed_expenses import require_fixed_provider
 from app.periodification import save_periodification
+from app.storage import ruta_almacenada, ruta_para_guardar
 
 
 RECEIPT_SELECT = """
@@ -62,7 +64,8 @@ def _catalog_id(conn: Connection, table: str, identifier: UUID, *, active: str) 
     if table not in allowed:
         raise RuntimeError("Catálogo no permitido")
     row = conn.execute(
-        f"SELECT id FROM {allowed[table]} WHERE id = %s AND {active}", (identifier,)
+        f"SELECT id FROM {allowed[table]} WHERE id = %s AND {active}", (identifier,)  # nosec B608
+        # Motivo: tabla de una lista blanca; el id va como parámetro
     ).fetchone()
     if not row:
         raise DomainError(f"El valor de {table} no existe o está inactivo.", 422)
@@ -206,7 +209,7 @@ def create_internal_receipt(
             categoria_id, subcategoria_id, creado_por, rol_creador,
             (firma_proveedor_nombre or "").strip() or None, firma_proveedor_confirmada,
             firma_proveedor_confirmada,
-            evidencia and evidencia["path"], evidencia and evidencia["name"],
+            evidencia and ruta_para_guardar(evidencia["path"], get_settings().upload_dir), evidencia and evidencia["name"],
             evidencia and evidencia["mime"], evidencia and evidencia["sha256"], approvals,
         ),
     ).fetchone()
@@ -341,4 +344,4 @@ def evidence_path(conn: Connection, receipt_id: UUID) -> tuple[Path, str, str]:
         raise DomainError("Comprobante interno no encontrado.", 404)
     if not row["evidencia_url"]:
         raise DomainError("Este comprobante no tiene evidencia anexa.", 404)
-    return Path(row["evidencia_url"]), row["evidencia_nombre"], row["evidencia_mime"]
+    return ruta_almacenada(row["evidencia_url"], get_settings().upload_dir), row["evidencia_nombre"], row["evidencia_mime"]

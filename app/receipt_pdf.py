@@ -1,3 +1,4 @@
+from decimal import ROUND_HALF_UP, Decimal
 from io import BytesIO
 from textwrap import wrap
 from typing import Any
@@ -8,6 +9,12 @@ import fitz
 def _safe(value: Any, fallback: str = "—") -> str:
     text = str(value).strip() if value is not None else ""
     return text or fallback
+
+
+def money_text(value: Any) -> str:
+    """Importe como texto con separador de miles y dos decimales, sin pasar por `float`."""
+    amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"{amount:,.2f}"
 
 
 def render_receipt_pdf(receipt: dict[str, Any]) -> bytes:
@@ -67,7 +74,7 @@ def render_receipt_pdf(receipt: dict[str, Any]) -> bytes:
             y += 20
             page.insert_text((52, y), f"{item['restaurante']} · {item['sucursal']}", fontsize=9, color=dark)
             page.insert_textbox(
-                fitz.Rect(390, y - 11, 540, y + 7), f"$ {float(item['monto']):,.2f}",
+                fitz.Rect(390, y - 11, 540, y + 7), f"$ {money_text(item['monto'])}",
                 fontsize=9, align=fitz.TEXT_ALIGN_RIGHT, color=dark,
             )
 

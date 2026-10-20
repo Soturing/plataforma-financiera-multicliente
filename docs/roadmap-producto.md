@@ -21,7 +21,7 @@ Actualizada: 2026-10-19. Integra cuatro fuentes:
 | 6 | **Endurecimiento de la aplicación** *(nuevo, sale de la auditoría)* | Pendiente. Ver §3.6. | — |
 | 7 | **Calidad e ingeniería** *(nuevo, sale de la auditoría)* | Pendiente. Ver §3.7. | — |
 | 8 | **Integridad de la base de datos** *(nuevo, sale de la revisión de base de datos)* | Pendiente. Ver §3.8. | — |
-| 0 | **Integración de ramas** *(nuevo, bloquea todo lo demás)* | Pendiente. Ver §3.0. | — |
+| 0 | **Integración de ramas** *(nuevo, bloquea todo lo demás)* | **Hecho** (2026-10-19): PR #2 fusionado en `main` (`f2dcf23`). Queda archivar `codex/security-foundation`. Ver §3.0. | PR #2 |
 
 ## 2. Conciliación de la auditoría de Copilot
 
@@ -96,8 +96,8 @@ Correcciones al diagrama de la revisión: `catalog.centros_costo` ya no existe (
 
 Hoy hay tres líneas sin fusionar: `main` (base saneada), `codex/security-foundation` (legado, **no se reutiliza**) y `claude/roadmap-usuarios-seguridad-8e43ba` (PR #2, que ya incluye `migrate-legacy`). La auditoría encontró todo esto «sin implementar» precisamente porque `main` está atrasada.
 
-- Revisar y fusionar el PR #2 en `main`, para que cualquier auditoría futura vea el código real.
-- Archivar `codex/security-foundation` con una nota en `decisiones.md` y cerrar los worktrees viejos.
+- ~~Revisar y fusionar el PR #2 en `main`~~ **Hecho (2026-10-19).** El PR cambió de base de `claude/migrate-legacy-project-d73050` a `main` y se fusionó con merge commit `f2dcf23`. Al integrarlo se actualizaron `pypdf` (6.21.1), `starlette` (1.3.1), `python-multipart` (0.0.31) y `pytest` (9.0.3). `fastapi` quedó en **0.136.3**: la 0.146 envuelve los routers en `_IncludedRouter` y rompe `tests/seguridad/test_politica.py`. `pruebas` (bloqueante) pasa en CI; `escaneo` (bandit) sigue en rojo y no bloquea (ver etapa 2).
+- Archivar `codex/security-foundation` con una nota en `decisiones.md` y cerrar los worktrees viejos. **Pendiente.**
 - Después, volver a correr la auditoría (Semgrep, Bandit, `pip-audit`) sobre `main` ya integrada.
 
 ### 3.1 Usuarios y acceso — lo que queda
@@ -171,18 +171,50 @@ Criterio de salida: cada cambio con su prueba, y ninguna migración destructiva 
 
 ### Avance de la etapa 1 (2026-10-19)
 
-Rama `claude/roadmap-audit-integration-2dcf8d`, montada sobre la del PR #2 (la etapa 0, fusionar en `main`, sigue pendiente).
+Rama `claude/roadmap-audit-integration-2dcf8d`, montada sobre la del PR #2 (que ya está en `main`, etapa 0 hecha).
 
-- Migración **034**: auditoría de sólo anexado y `RESTRICT` en correcciones. Comando nuevo `python -m app.plataforma.tenants migrar --clave <CLIENTE>` para aplicar migraciones a un cliente ya dado de alta (antes sólo se aplicaban en el alta). **Aún no se ha aplicado a GRUPO-DEMO ni a GRUPO-PRUEBA-B.**
+- Migración **034**: auditoría de sólo anexado y `RESTRICT` en correcciones. Comando nuevo `python -m app.plataforma.tenants migrar --clave <CLIENTE>` para aplicar migraciones a un cliente ya dado de alta (antes sólo se aplicaban en el alta). **Aplicada a GRUPO-DEMO y a GRUPO-PRUEBA-B** (respaldo previo de GRUPO-DEMO, snapshot 6a365126).
 - XML y XLSX seguros, PostgreSQL de desarrollo sólo en `127.0.0.1`, prueba del autor sustituible.
 - Integración continua lista; empieza a correr en cuanto la rama se suba a GitHub.
 - Suite contra una base desechable: 174 pasan y 75 se omiten (Keycloak y plano de control). La única que falla, `test_plataforma_no_lee_politicas_globales_ni_borra_claves`, necesita el token de OpenBao que está en la otra copia de trabajo; no depende de estos cambios.
+
+### Avance de la etapa 2 (2026-10-20)
+
+Rama de integración `integracion/etapa2`: reúne el trabajo de los PR #3 y #9 a #17 ya fusionado y con la suite completa en verde, para entrar a `main` de una vez. Las filas de §2 describen el estado del 2026-10-19; esta tabla las actualiza.
+
+| Punto del roadmap | Hecho | Queda |
+|---|---|---|
+| §3.1 / hallazgo 1: salir del modo abierto | `acceso_modo` es `seguro` por defecto y producción no arranca en modo abierto (D-028, PR #5). | Retirar por completo el modo abierto cuando el front ya no lo necesite en desarrollo. |
+| §3.6.4 / hallazgo 5: firma de archivos | Verificación por los primeros bytes en facturas, lotes, evidencias, catálogo y ventas; la extensión sale del contenido (PR #7). | ClamAV: **decisión tuya** (consume memoria). Un PDF corrupto con firma válida sigue llegando al OCR. |
+| §3.6.5 / hallazgo 7: cabeceras y CSP | CSP (`script-src 'self'`), `nosniff`, `X-Frame-Options`, `Referrer-Policy`; sólo PDF e imágenes en línea (PR #4). | `style-src` sin `unsafe-inline`: requiere sustituir los atributos `style` del front. |
+| §3.6.6 / hallazgo 14: `/docs` | Apagado fuera de desarrollo con acceso abierto (PR #4). | — |
+| §3.6.7 / hallazgo 6: tasa y recursos | Límite de peticiones por IP (429), lectura de archivos por partes, topes de memoria y CPU, contenedores sin capacidades y API de sólo lectura (PR #6, #16). | Cuota por cliente y workers sin salida a internet (necesitan cifras o red del servidor). |
+| §3.6.8 / hallazgo 9: rutas y nombres | Rutas relativas al directorio del cliente y nombres limpios (PR #10). | Convertir las rutas absolutas ya guardadas (las raíces varían por entorno). |
+| §3.6.9 / hallazgo 8: `innerHTML` | Revisados los 79 usos: todo texto de la base se escapa; prueba estática contra regresiones (PR #17). | — |
+| §3.7.1 / hallazgo 15: escaneo en CI | `bandit` limpio y bloqueante; `pip-audit` bloqueante; XML revisa todo el contenido (PR #8, #12). | `ruff` y Semgrep. |
+| §3.7.2: dependencias de desarrollo | `requirements-dev.txt` con herramientas fijadas (PR #8). | Versiones con hash. |
+| §3.7.3: un solo aplicador de migraciones | `app/migraciones.py` para clientes, CI y desarrollo (PR #9). | — |
+| §3.7.4: pruebas | Dinero sin `float` y redondeo, cobertura en CI (65 %, sin umbral), pruebas de restricciones de la base (PR #14, #15). | Pruebas de carga (24 000 documentos por semana y 14 usuarios: **necesitan un entorno de medición**) y umbral de cobertura (**decisión**). |
+| §3.7.5 / hallazgo 12: registro | ID de correlación por petición y JSON en servidor (PR #13). | Tablero de alertas y métricas de la cola. |
+| §3.8.2: identidad estable | Migración 035: `<col>_por_id` copiado de la sesión por trigger, 29 columnas (D-029, PR #11). | Aplicarla a GRUPO-DEMO y GRUPO-PRUEBA-B con `tenants migrar`, con respaldo previo. |
+| §3.8.3: topes de `tenant_runtime` | `statement_timeout` 120 s e `idle_in_transaction` 60 s (PR #11). | — |
+| §3.8.4: reglas financieras | Revisado: periodos ya validados por `CHECK`. | **Decisión de negocio:** hoy se puede aprobar un desglose que no cuadra «verificando el total»; un `CHECK` de totales lo prohibiría. `EXCLUDE` de periodos: falta definir la clave. |
+| §3.8.5: pruebas de la base | 11 pruebas de restricciones (PR #15). | Triggers y cascadas más finos. |
+
+**Pendientes que necesitan una decisión tuya**
+
+- ClamAV (antivirus en el worker): sí o no, y cuándo.
+- Umbral de cobertura mínima en el CI.
+- ¿Se prohíbe aprobar una factura cuyo desglose no cuadra? (condiciona el `CHECK` de totales).
+- Cuota por cliente (cifras) y política de retención del borrado lógico de facturas.
+- Borrado lógico de facturas y reautenticación C2 en borrados (diseño).
+- Archivar `codex/security-foundation`: la rama sigue en `origin`; borrarla o etiquetarla es tu decisión.
 
 ## 4. Orden de ejecución propuesto
 
 | Etapa | Contenido | Por qué en este orden |
 |-------|-----------|-----------------------|
-| **0. Integrar** | 3.0: fusionar el PR #2 en `main` y archivar el legado. | Sin esto, toda auditoría y todo cambio se hace sobre código viejo. |
+| **0. Integrar** *(hecha salvo archivar el legado)* | 3.0: PR #2 fusionado en `main` (`f2dcf23`); pendiente archivar `codex/security-foundation`. | Sin esto, toda auditoría y todo cambio se hace sobre código viejo. |
 | **1. Inmediato** (cambios chicos y de alto impacto) | 3.6 puntos 1 a 3 (actor y borrado, puerto 5432, `defusedxml`), 3.8 punto 1 (auditoría sin cascada y borrado lógico) y 3.7 punto 1 (integración continua). | Cierra el hueco confirmado del historial que se borra en cascada y deja una red de pruebas para lo que sigue. |
 | **2. Antes de producción** | 3.6 puntos 4 a 7; 3.1 salir del modo abierto; 3.7 puntos 2 a 5; 3.8 puntos 2 a 5. | Son la condición para desplegar y para que el pentest valga la pena. |
 | **3. Despliegue** | 3.1: VPS, bucket, guía de despliegue, SMTP real, red por cliente; luego el pentest externo. | Ya con la aplicación endurecida. |

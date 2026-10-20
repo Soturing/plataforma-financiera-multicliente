@@ -6,10 +6,12 @@ from uuid import UUID
 
 from psycopg import Connection
 
+from app.config import get_settings
 from app.errors import DomainError
 from app.fixed_expenses import require_fixed_provider
 from app.page_groups import ACTIVE_CONTINUATION_SQL, related_pages
 from app.schemas import ProcesamientoSimulado
+from app.storage import ruta_para_guardar
 from app.pdf_splitter import SplitPage
 from app.classification import classify_document, is_expense_document, save_classification
 from app.provider_catalog import normalize_alias, remember_accounting_rule, remember_provider_alias
@@ -90,7 +92,7 @@ def create_invoice(
         FROM catalog.sucursales WHERE clave = %s AND activa
         RETURNING id, estado::text, archivo_nombre
         """,
-        (file_path, filename, mime, sha256, created_by, sucursal_clave),
+        (ruta_para_guardar(file_path, get_settings().upload_dir), filename, mime, sha256, created_by, sucursal_clave),
     ).fetchone()
     if not row:
         raise DomainError(f"No existe una sucursal activa con clave {sucursal_clave}.", 422)
@@ -278,7 +280,7 @@ def create_batch(
         ) VALUES (%s, %s, 'listo', %s, %s, %s, %s, %s, now())
         """,
         (
-            batch_id, branch["id"], original_path, original_name,
+            batch_id, branch["id"], ruta_para_guardar(original_path, get_settings().upload_dir), original_name,
             original_sha256, len(pages), created_by,
         ),
     )
@@ -292,7 +294,7 @@ def create_batch(
             """,
             [
                 (
-                    branch["id"], str(page.path.resolve()),
+                    branch["id"], ruta_para_guardar(page.path, get_settings().upload_dir),
                     f"{original_name} - página {page.number}", page.sha256,
                     created_by, batch_id, page.number,
                 )
@@ -675,7 +677,8 @@ def get_review_queue_summary(
             WHERE cdx.factura_id = f.id ORDER BY cdx.version DESC LIMIT 1
         ) cd ON true
         WHERE """
-        + " AND ".join(clauses),
+        + " AND ".join(clauses),  # nosec B608
+        # Motivo: cláusulas armadas con literales del código; los valores van como parámetros
         params,
     ).fetchone()
     total = row["total"]

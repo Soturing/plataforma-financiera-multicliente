@@ -32,6 +32,7 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from app import migraciones
 from app.plataforma import secretos
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -214,6 +215,16 @@ def levantar_base(clave: str, env: dict[str, str]) -> None:
     raise AltaError("La base del cliente no respondió a tiempo")
 
 
+# Topes de la cuenta de la app (roadmap §3.8.3): una consulta atascada o una transacción
+# olvidada no deben acaparar la base de un cliente. La propietaria (migraciones) no los tiene.
+LIMITES_RUNTIME = (("statement_timeout", "120s"), ("idle_in_transaction_session_timeout", "60s"))
+
+
+def fijar_limites_runtime(c: psycopg.Connection) -> None:
+    for parametro, valor in LIMITES_RUNTIME:
+        c.execute(sql.SQL("ALTER ROLE tenant_runtime SET {} = {}").format(sql.Identifier(parametro), sql.Literal(valor)))
+
+
 def crear_roles(env: dict[str, str]) -> None:
     """Propietaria para migraciones y cuenta de la app sin privilegios (arquitectura-aislamiento §8)."""
     with conectar(url_base(env, "dp_admin", "DP_ADMIN_PASSWORD"), autocommit=True) as c:
@@ -230,6 +241,7 @@ def crear_roles(env: dict[str, str]) -> None:
         c.execute("REVOKE ALL ON DATABASE facturas FROM PUBLIC")
         c.execute("GRANT CONNECT ON DATABASE facturas TO tenant_owner, tenant_runtime")
         c.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+        fijar_limites_runtime(c)
 
 
 # --------------------------------------------------------------------------- #
@@ -261,25 +273,9 @@ def base_inicializada(env: dict[str, str]) -> bool:
 
 def aplicar_migraciones(env: dict[str, str], *, hasta_previas: str | None = None) -> list[str]:
     """Aplica en orden las migraciones pendientes como propietaria y las registra."""
-    archivos = sorted(MIGRACIONES.glob("*.sql"))
-    aplicadas: list[str] = []
-    with conectar(url_base(env, "tenant_owner", "TENANT_OWNER_PASSWORD"), autocommit=True) as c:
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS public.migraciones_aplicadas (nombre text PRIMARY KEY, aplicada_en timestamptz NOT NULL DEFAULT now())"
-        )
-        if hasta_previas:
-            for a in archivos:
-                if a.name[:3] <= hasta_previas:
-                    c.execute("INSERT INTO public.migraciones_aplicadas (nombre) VALUES (%s) ON CONFLICT DO NOTHING", (a.name,))
-        hechas = {f["nombre"] for f in c.execute("SELECT nombre FROM public.migraciones_aplicadas").fetchall()}
-        for a in archivos:
-            if a.name in hechas:
-                continue
-            with c.transaction():
-                c.execute(a.read_text(encoding="utf-8"))
-                c.execute("INSERT INTO public.migraciones_aplicadas (nombre) VALUES (%s)", (a.name,))
-            aplicadas.append(a.name)
-    return aplicadas
+    return migraciones.aplicar(
+        url_base(env, "tenant_owner", "TENANT_OWNER_PASSWORD"), carpeta=MIGRACIONES, hasta_previas=hasta_previas
+    )
 
 
 def fijar_identidad(env: dict[str, str], clave: str) -> None:
@@ -325,7 +321,8 @@ def copiar_archivos(env: dict[str, str], clave: str, origen: Path) -> int:
                                ("core.documentos_duplicados", "archivo_url")):
             total += c.execute(
                 # starts_with y no LIKE: las rutas de Windows llevan "\\", que LIKE trata como escape.
-                f"UPDATE {tabla} SET {columna} = %s || substr({columna}, length(%s) + 1) WHERE starts_with({columna}, %s)",
+                f"UPDATE {tabla} SET {columna} = %s || substr({columna}, length(%s) + 1) WHERE starts_with({columna}, %s)",  # nosec B608
+                # Motivo: tabla y columna salen de una tupla fija del código
                 (nuevo, viejo, viejo),
             ).rowcount
     return total
@@ -497,8 +494,15 @@ def desplegar(args: argparse.Namespace) -> int:
 
 def migrar(args: argparse.Namespace) -> int:
     """Aplica las migraciones pendientes de un cliente ya dado de alta (como propietaria)."""
-    aplicadas = aplicar_migraciones(entorno(args.clave.upper()))
+    env = entorno(args.clave.upper())
+    aplicadas = aplicar_migraciones(env)
     print("Migraciones aplicadas: " + (", ".join(aplicadas) if aplicadas else "ninguna; la base estaba al día"))
+    try:  # los topes de tenant_runtime los fija el superusuario del contenedor, no la propietaria
+        with conectar(url_base(env, "dp_admin", "DP_ADMIN_PASSWORD"), autocommit=True) as c:
+            fijar_limites_runtime(c)
+        print("Topes de tenant_runtime al día (statement_timeout 120 s, idle_in_transaction 60 s).")
+    except Exception as exc:  # noqa: BLE001
+        print(f"AVISO: no se pudieron fijar los topes de tenant_runtime ({exc}).", file=sys.stderr)
     return 0
 
 

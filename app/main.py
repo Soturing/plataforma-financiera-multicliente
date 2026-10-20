@@ -1,7 +1,9 @@
 import csv
 import io
+import logging
 import re
 import tempfile
+import time
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -19,6 +21,7 @@ from app.database import get_connection
 from app.seguridad.api import router as seguridad_router
 from app.seguridad.ciclo_vida import router as ciclo_vida_router
 from app.seguridad.autorizacion import actor_o, autorizar_ruta
+from app import registro
 from app.endurecimiento import CABECERAS_SEGURIDAD, disposicion, documentacion_activa
 from app.errors import DomainError
 from app.firma_archivos import CABECERA_MINIMA, TIPO_POR_MIME, verificar as verificar_firma
@@ -95,7 +98,7 @@ from app.schemas import (
     RechazarComprobanteRequest,
     SustituirComprobanteRequest,
 )
-from app.storage import read_limited, save_upload
+from app.storage import nombre_seguro, read_limited, ruta_almacenada, save_upload
 from app.ocr.paddle_engine import get_ocr_engine
 from app.sales_image import parse_sales_image
 from app.sales_xlsx import parse_sales_xlsx
@@ -145,6 +148,8 @@ from app.provider_catalog import (
 
 
 _ajustes = get_settings()
+registro.configurar(_ajustes.log_json)
+log = logging.getLogger("facturas.acceso")
 _documentacion = documentacion_activa(_ajustes.environment, _ajustes.acceso_modo)
 
 app = FastAPI(
@@ -204,6 +209,30 @@ async def limite_de_peticiones(request, call_next):
 
 
 @app.middleware("http")
+async def registro_de_peticiones(request, call_next):
+    """ID de correlación por petición: se acepta el del proxy si es válido, se devuelve en la
+    respuesta y acompaña cada renglón del registro y de la bitácora de seguridad."""
+    pid = registro.nuevo_peticion_id(request.headers.get("x-request-id"))
+    token = registro.peticion_id.set(pid)
+    inicio = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        log.exception("Error no controlado", extra={"metodo": request.method, "ruta": request.url.path})
+        raise
+    finally:
+        registro.peticion_id.reset(token)
+    response.headers["X-Request-ID"] = pid
+    if not request.url.path.startswith("/static/"):
+        log.info(
+            "%s %s -> %s", request.method, request.url.path, response.status_code,
+            extra={"peticion_id": pid, "metodo": request.method, "ruta": request.url.path,
+                   "estado": response.status_code, "ms": round((time.perf_counter() - inicio) * 1000)},
+        )
+    return response
+
+
+@app.middleware("http")
 async def cabeceras_de_seguridad(request, call_next):
     response = await call_next(request)
     for nombre, valor in CABECERAS_SEGURIDAD.items():
@@ -248,7 +277,7 @@ async def upload_invoice(
         return create_invoice(
             conn,
             sucursal_clave=sucursal_clave,
-            filename=archivo.filename or path.name,
+            filename=nombre_seguro(archivo.filename, path.name),
             mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
             file_path=str(path.resolve()),
             sha256=digest,
@@ -287,7 +316,7 @@ async def upload_documents(
                 duplicate = register_hash_duplicate(
                     conn,
                     original_invoice_id=existing["id"],
-                    filename=archivo.filename or path.name,
+                    filename=nombre_seguro(archivo.filename, path.name),
                     file_path=str(path.resolve()),
                     sha256=digest,
                 )
@@ -300,7 +329,7 @@ async def upload_documents(
             row = create_invoice(
                 conn,
                 sucursal_clave=sucursal_clave,
-                filename=archivo.filename or path.name,
+                filename=nombre_seguro(archivo.filename, path.name),
                 mime="application/xml" if path.suffix.lower() == ".xml" else (archivo.content_type or "application/octet-stream"),
                 file_path=str(path.resolve()),
                 sha256=digest,
@@ -360,7 +389,7 @@ def duplicate_file(
     ).fetchone()
     if not row:
         raise DomainError("Duplicado no encontrado.", 404)
-    path = Path(row["archivo_url"]).resolve()
+    path = ruta_almacenada(row["archivo_url"], settings.upload_dir)
     upload_root = settings.upload_dir.resolve()
     if not path.is_relative_to(upload_root) or not path.is_file():
         raise DomainError("El archivo duplicado no está disponible.", 404)
@@ -376,7 +405,7 @@ def duplicate_file(
     return FileResponse(
         path,
         media_type=tipo,
-        filename=row["archivo_nombre"],
+        filename=nombre_seguro(row["archivo_nombre"]),
         content_disposition_type=disposicion(tipo),
     )
 
@@ -392,7 +421,7 @@ def discard_duplicates(
     upload_root = settings.upload_dir.resolve()
     removed_files = 0
     for row in rows:
-        path = Path(row["archivo_url"]).resolve()
+        path = ruta_almacenada(row["archivo_url"], settings.upload_dir)
         if path.is_relative_to(upload_root) and path.is_file():
             path.unlink()
             removed_files += 1
@@ -485,7 +514,7 @@ def delete_invoices(
     removed_paths = result.pop("archivos") + result.pop("lotes_eliminados")
     parent_dirs: set[Path] = set()
     for raw_path in removed_paths:
-        path = Path(raw_path).resolve()
+        path = ruta_almacenada(raw_path, settings.upload_dir)
         if path.is_relative_to(upload_root) and path.is_file():
             parent_dirs.add(path.parent)
             path.unlink()
@@ -521,14 +550,14 @@ def invoice_file(
     ).fetchone()
     if not row:
         raise DomainError("Factura no encontrada.", 404)
-    path = Path(row["archivo_url"]).resolve()
+    path = ruta_almacenada(row["archivo_url"], settings.upload_dir)
     upload_root = settings.upload_dir.resolve()
     if not path.is_relative_to(upload_root) or not path.is_file():
         raise DomainError("El archivo de la factura no está disponible.", 404)
     return FileResponse(
         path,
         media_type=row["archivo_mime"],
-        filename=row["archivo_nombre"],
+        filename=nombre_seguro(row["archivo_nombre"]),
         content_disposition_type=disposicion(row["archivo_mime"]),
     )
 
@@ -601,7 +630,7 @@ async def create_receipt(
             saved_path, digest, _ = await save_upload(evidencia, settings)
             evidence = {
                 "path": str(saved_path.resolve()),
-                "name": evidencia.filename,
+                "name": nombre_seguro(evidencia.filename, "evidencia"),
                 "mime": evidencia.content_type or "application/octet-stream",
                 "sha256": digest,
             }
@@ -700,7 +729,7 @@ def receipt_evidence(
     path = path.resolve()
     if not path.is_relative_to(settings.upload_dir.resolve()) or not path.is_file():
         raise DomainError("La evidencia no está disponible.", 404)
-    return FileResponse(path, media_type=mime, filename=name, content_disposition_type=disposicion(mime))
+    return FileResponse(path, media_type=mime, filename=nombre_seguro(name), content_disposition_type=disposicion(mime))
 
 
 @app.get("/api/v1/proveedores", tags=["catalogos"])
@@ -1243,7 +1272,7 @@ async def upload_batch(
             batch_id=batch_id,
             sucursal_clave=sucursal_clave,
             original_path=str(original_path.resolve()),
-            original_name=archivo.filename or "lote.pdf",
+            original_name=nombre_seguro(archivo.filename, "lote.pdf"),
             original_sha256=digest,
             created_by=actor_o(creada_por),
             pages=pages,
@@ -1324,7 +1353,7 @@ def delete_cancelled_batch(
     removed_paths = result.pop("archivos") + result.pop("lotes_eliminados")
     parent_dirs: set[Path] = set()
     for raw_path in removed_paths:
-        path = Path(raw_path).resolve()
+        path = ruta_almacenada(raw_path, settings.upload_dir)
         if path.is_relative_to(upload_root) and path.is_file():
             parent_dirs.add(path.parent)
             path.unlink()

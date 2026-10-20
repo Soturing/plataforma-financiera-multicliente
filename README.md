@@ -76,6 +76,17 @@ py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
 
+Levantar la base de desarrollo y aplicar las migraciones (el único aplicador es `app/migraciones.py`; una
+migración nueva sólo necesita su archivo en `db/migrations/`):
+
+```powershell
+docker compose up -d
+.\.venv\Scripts\python.exe -m app.migraciones aplicar --url $env:FACTURAS_DATABASE_URL --semilla db/seeds/001_demo_catalogs.sql@010
+```
+
+Una base de desarrollo que ya tenía las migraciones por el `compose.yaml` anterior se adopta una sola vez con
+`--hasta-previas 034` (sin `--semilla`); después basta `aplicar --url ...`.
+
 Iniciar el servidor:
 
 ```powershell
