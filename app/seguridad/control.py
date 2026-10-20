@@ -212,7 +212,8 @@ def listar_auditoria(conn: Connection, *, tenant_id: UUID | None, actor_id: UUID
         LEFT JOIN control.tenants t ON t.id = a.tenant_id
         {where}
         ORDER BY a.id DESC LIMIT %s
-        """,
+        """,  # nosec B608
+        # Motivo: filtros armados con literales del código; los valores van como parámetros
         params,
     ).fetchall()
 

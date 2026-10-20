@@ -1,0 +1,10 @@
+# Configuración de bandit (CI: job `escaneo`; local: `bandit -c bandit.yaml -r app -x app/static`).
+#
+# B404, B603 y B607 sólo señalan que el código usa `subprocess` con una lista de argumentos
+# (docker, restic, gocryptfs, uvicorn…): es la forma segura y es lo que hacen las herramientas
+# de operación (`app/plataforma/*`) y el supervisor de workers. Lo peligroso (`shell=True`,
+# B602/B604/B605) sigue activo y falla el análisis.
+skips:
+  - B404
+  - B603
+  - B607

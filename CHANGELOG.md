@@ -46,6 +46,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **`bandit` limpio y bloqueante:** los 52 hallazgos se resolvieron o se justificaron con `# nosec` (consultas
+  armadas con literales del código, parámetros de la API de OpenBao, bind en contenedor); `bandit.yaml` omite sólo
+  B404/B603/B607 (uso de `subprocess` con lista de argumentos). El job `escaneo` del CI deja de ser informativo.
+- **XML:** `xml_seguro` busca `DOCTYPE`/`ENTITY` en todo el contenido (antes sólo en los primeros 8 KB, y un
+  comentario largo lo esquivaba) y rechaza UTF-16/UTF-32; el lector de CFDI (`text_processing`) usa el mismo helper.
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.

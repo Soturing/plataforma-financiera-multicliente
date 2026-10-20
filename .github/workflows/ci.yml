@@ -1,7 +1,7 @@
 # Integración continua (roadmap §3.7.1).
 # - pruebas: suite completa contra un data plane desechable con RLS (bloquea).
 # - secretos: gitleaks sobre todo el historial (bloquea).
-# - escaneo: pip-audit y bandit; por ahora sólo informan, hasta corregir lo que ya existe.
+# - escaneo: pip-audit y bandit (bloquean desde que se corrigió lo que ya existía; bandit.yaml lista lo que se omite).
 name: CI
 
 on:
@@ -54,7 +54,6 @@ jobs:
 
   escaneo:
     runs-on: ubuntu-24.04
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -65,4 +64,4 @@ jobs:
       - name: Dependencias con vulnerabilidades conocidas
         run: pip-audit -r requirements-dev.txt
       - name: Análisis estático de Python
-        run: bandit -q -r app -x app/static
+        run: bandit -q -r app -x app/static -c bandit.yaml
