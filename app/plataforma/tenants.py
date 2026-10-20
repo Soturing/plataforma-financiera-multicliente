@@ -321,7 +321,8 @@ def copiar_archivos(env: dict[str, str], clave: str, origen: Path) -> int:
                                ("core.documentos_duplicados", "archivo_url")):
             total += c.execute(
                 # starts_with y no LIKE: las rutas de Windows llevan "\\", que LIKE trata como escape.
-                f"UPDATE {tabla} SET {columna} = %s || substr({columna}, length(%s) + 1) WHERE starts_with({columna}, %s)",
+                f"UPDATE {tabla} SET {columna} = %s || substr({columna}, length(%s) + 1) WHERE starts_with({columna}, %s)",  # nosec B608
+                # Motivo: tabla y columna salen de una tupla fija del código
                 (nuevo, viejo, viejo),
             ).rowcount
     return total

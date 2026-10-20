@@ -136,7 +136,8 @@ def inicializar(*, desarrollo: bool) -> dict:
     bao = Bao()
     if bao.estado()["initialized"]:
         raise SecretosError("OpenBao ya está inicializado.")
-    init = bao._req("POST", "sys/init", json_body={"secret_shares": 3, "secret_threshold": 2})
+    init = bao._req("POST", "sys/init", json_body={"secret_shares": 3, "secret_threshold": 2})  # nosec B105
+    # Motivo: nombres de parámetros de la API de OpenBao, no contraseñas
     llaves, raiz = init["keys_base64"], init["root_token"]
     # Las llaves se entregan antes de cualquier otro paso: si algo falla después, no se pierden.
     if desarrollo:
@@ -228,8 +229,10 @@ def preparar_cliente(clave: str, *, secretos_base: dict, secretos_app: dict, res
     for uso in ("app", "respaldos"):
         rol = f"{clave}-{uso}"
         bao._req("POST", f"auth/approle/role/{rol}", json_body={
-            "token_policies": [f"tenant-{clave}-{uso}"], "token_ttl": "1h", "token_max_ttl": "4h",
-            "secret_id_ttl": "0", "token_bound_cidrs": ["127.0.0.1/32", "172.16.0.0/12"],
+            "token_policies": [f"tenant-{clave}-{uso}"], "token_ttl": "1h", "token_max_ttl": "4h",  # nosec B105
+            # Motivo: nombres de parámetros de la API de OpenBao, no contraseñas
+            "secret_id_ttl": "0", "token_bound_cidrs": ["127.0.0.1/32", "172.16.0.0/12"],  # nosec B105
+            # Motivo: nombres de parámetros de la API de OpenBao, no contraseñas
             "secret_id_bound_cidrs": ["127.0.0.1/32", "172.16.0.0/12"],
         })
         role_id = bao._req("GET", f"auth/approle/role/{rol}/role-id")["data"]["role_id"]

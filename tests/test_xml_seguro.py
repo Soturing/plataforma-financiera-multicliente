@@ -44,3 +44,16 @@ def test_el_catalogo_de_proveedores_rechaza_entidades_en_el_xlsx():
     data = _xlsx({"xl/sharedStrings.xml": BOMBA, "xl/workbook.xml": b"<w/>", "xl/_rels/workbook.xml.rels": b"<r/>"})
     with pytest.raises(DomainError, match="declaración XML"):
         parse_provider_file("proveedores.xlsx", data)
+
+
+def test_rechaza_un_doctype_escondido_tras_un_comentario_largo():
+    """Antes sólo se miraban los primeros 8 KB: un relleno largo esquivaba la comprobación."""
+    relleno = b"<!--" + b"x" * 20000 + b"-->"
+    with pytest.raises(DomainError, match="declaración XML"):
+        xml_seguro.parsear(b"<?xml version='1.0'?>" + relleno + b"<!DOCTYPE r [<!ENTITY a 'b'>]><r>&a;</r>")
+
+
+def test_rechaza_utf16_que_escondia_el_doctype_a_la_busqueda_de_bytes():
+    carga = "<?xml version='1.0' encoding='UTF-16'?><!DOCTYPE r [<!ENTITY a 'b'>]><r>&a;</r>".encode("utf-16")
+    with pytest.raises(DomainError, match="UTF-8"):
+        xml_seguro.parsear(carga)

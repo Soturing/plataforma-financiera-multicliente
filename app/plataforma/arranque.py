@@ -61,14 +61,16 @@ def main(argv: list[str] | None = None) -> int:
         print("OpenBao no respondió o sigue sellado: abra con `python -m app.plataforma.secretos abrir`.", file=sys.stderr)
         return 3
     if modo == "api":
-        comando = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+        comando = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",  # nosec B104
+        # Motivo: dentro del contenedor la app escucha en todas las interfaces; el puerto sólo se publica en 127.0.0.1
                    "--proxy-headers", "--forwarded-allow-ips", entorno.get("ARRANQUE_PROXY_IPS", "*")]
     elif modo == "workers":
         comando = [sys.executable, "-m", "app.worker_cli"]
     else:
         print(f"Modo desconocido: {modo} (api | workers)", file=sys.stderr)
         return 2
-    os.execvpe(comando[0], comando, entorno)
+    os.execvpe(comando[0], comando, entorno)  # nosec B606
+    # Motivo: comando fijo (uvicorn o worker_cli) sin entrada de usuario
     return 0
 
 

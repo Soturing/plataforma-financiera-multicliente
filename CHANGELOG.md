@@ -63,6 +63,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   anteriores no se rellenan. Una prueba avisa si se añade un `*_por` sin su `_id`.
 - **Topes de `tenant_runtime` (§3.8.3):** `statement_timeout` de 120 s e `idle_in_transaction_session_timeout`
   de 60 s, fijados al crear los roles y con `tenants migrar` en los clientes existentes.
+- **`bandit` limpio y bloqueante:** los 52 hallazgos se resolvieron o se justificaron con `# nosec` (consultas
+  armadas con literales del código, parámetros de la API de OpenBao, bind en contenedor); `bandit.yaml` omite sólo
+  B404/B603/B607 (uso de `subprocess` con lista de argumentos). El job `escaneo` del CI deja de ser informativo.
+- **XML:** `xml_seguro` busca `DOCTYPE`/`ENTITY` en todo el contenido (antes sólo en los primeros 8 KB, y un
+  comentario largo lo esquivaba) y rechaza UTF-16/UTF-32; el lector de CFDI (`text_processing`) usa el mismo helper.
 
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen

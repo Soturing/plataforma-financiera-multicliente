@@ -4,12 +4,12 @@ import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Callable
-from xml.etree import ElementTree as ET
 
 import fitz
 from pypdf import PdfReader
 
-from app import qr_sat
+from app import qr_sat, xml_seguro
+from app.errors import DomainError
 from app.ocr.base import OcrDocument, OcrEngine, OcrLine
 from app.ocr.paddle_engine import get_ocr_engine
 
@@ -78,21 +78,20 @@ class HybridTextEngine:
     def _read_cfdi_xml(path: Path) -> OcrDocument:
         started = time.perf_counter()
         payload = path.read_bytes()
-        guard = payload[:8192].decode("utf-8", errors="ignore").upper()
-        if "<!DOCTYPE" in guard or "<!ENTITY" in guard:
-            raise ValueError("El XML contiene una declaración externa no permitida")
         try:
-            root = ET.fromstring(payload)
-        except ET.ParseError as exc:
+            root = xml_seguro.parsear(payload)
+        except DomainError as exc:
+            raise ValueError("El XML contiene una declaración externa no permitida") from exc
+        except xml_seguro.ParseError as exc:
             raise ValueError("El XML no es válido") from exc
 
-        def local_name(element: ET.Element) -> str:
+        def local_name(element: xml_seguro.Element) -> str:
             return element.tag.rsplit("}", 1)[-1]
 
         if local_name(root).lower() != "comprobante":
             raise ValueError("El XML no corresponde a un CFDI")
 
-        def attr(element: ET.Element | None, name: str) -> str | None:
+        def attr(element: xml_seguro.Element | None, name: str) -> str | None:
             if element is None:
                 return None
             return next(
@@ -100,7 +99,7 @@ class HybridTextEngine:
                 None,
             )
 
-        def first(name: str) -> ET.Element | None:
+        def first(name: str) -> xml_seguro.Element | None:
             return next((item for item in root.iter() if local_name(item).lower() == name.lower()), None)
 
         def money(value: str | None) -> Decimal:
