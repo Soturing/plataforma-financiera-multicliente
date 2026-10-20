@@ -43,6 +43,13 @@ services:
     mem_limit: ${APP_MEM_LIMIT:-1g}
     cpus: ${APP_CPUS:-1.0}
     pids_limit: 512
+    # El API sólo escribe en /tmp y en los archivos del cliente (volumen montado): el resto es de sólo lectura.
+    # Los workers no: PaddleOCR descarga y guarda sus modelos en el directorio del usuario.
+    read_only: true
+    tmpfs: ["/tmp"]
+    # Sin privilegios extra: el proceso ya corre como uid 10001; esto impide recuperarlos (setuid) y quita todas las capacidades de Linux.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     environment: &entorno_app
       SECRETOS_URL: http://secretos:8200
       SECRETOS_APP_ROLE_ID: ${SECRETOS_APP_ROLE_ID:?Falta SECRETOS_APP_ROLE_ID}
@@ -86,6 +93,9 @@ services:
     mem_limit: ${WORKERS_MEM_LIMIT:-3g}
     cpus: ${WORKERS_CPUS:-2.0}
     pids_limit: 512
+    # Sin privilegios extra: el proceso ya corre como uid 10001; esto impide recuperarlos (setuid) y quita todas las capacidades de Linux.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     environment:
       <<: *entorno_app
       FACTURAS_OCR_WORKERS: ${FACTURAS_OCR_WORKERS:-1}
