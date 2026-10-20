@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     smtp_remitente: str = "accesos@facturas.localhost"
     # Cookie `Secure`: obligatoria con HTTPS en producción; en http://127.0.0.1 no se enviaría.
     cookie_segura: bool = False
+    # Registro en JSON, un objeto por renglón con el ID de la petición (servidor); texto en desarrollo.
+    log_json: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FACTURAS_", extra="ignore")
 

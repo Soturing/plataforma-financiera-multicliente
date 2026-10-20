@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -12,6 +13,8 @@ from pypdf import PdfReader
 from app import qr_sat
 from app.ocr.base import OcrDocument, OcrEngine, OcrLine
 from app.ocr.paddle_engine import get_ocr_engine
+
+log = logging.getLogger("facturas.texto")
 
 
 class HybridTextEngine:
@@ -61,6 +64,7 @@ class HybridTextEngine:
                     scanned += largest / page_area >= coverage
                 return bool(len(document)) and scanned / len(document) >= 0.5
         except Exception:
+            log.warning("No se pudo evaluar si el PDF es un escaneo; se trata como digital", exc_info=True)
             return False
 
     @staticmethod
@@ -69,6 +73,7 @@ class HybridTextEngine:
         try:
             qr = qr_sat.read_file(path)
         except Exception:
+            log.warning("Falló la lectura del QR del SAT; se continúa sin él", exc_info=True)
             qr = []
         if qr:
             document.raw["qr_sat"] = qr

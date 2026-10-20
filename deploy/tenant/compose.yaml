@@ -60,6 +60,8 @@ services:
       FACTURAS_SMTP_HOST: ${FACTURAS_SMTP_HOST:-correo-pruebas}
       FACTURAS_SMTP_PORT: ${FACTURAS_SMTP_PORT:-1025}
       FACTURAS_OCR_AUTOSTART_WORKERS: "false"
+      # Un objeto JSON por renglón, con el ID de la petición.
+      FACTURAS_LOG_JSON: "true"
       # Tras Caddy la IP real viene en X-Forwarded-For (límite de peticiones por IP).
       FACTURAS_PROXY_CONFIABLE: ${FACTURAS_PROXY_CONFIABLE:-true}
     volumes:
