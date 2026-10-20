@@ -78,6 +78,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   de gastos fijos conserva el total exacto en 300 casos y de los redondeos del negocio (`tests/test_dinero.py`).
   El CI mide la cobertura (hoy 65 %), la imprime y la guarda como artefacto, sin umbral. Los `float` que quedan
   sólo alimentan series de gráficas.
+- **Pruebas de integridad de la base (§3.8.5):** `tests/test_integridad_bd.py` comprueba que las restricciones
+  existentes rechazan lo que deben (nómina con monto negativo, semana o año fuera de rango y duplicados; cierres de
+  comisiones con mes o importe inválidos; periodo invertido; RFC único y gasto fijo único por proveedor). Cada
+  prueba deshace su transacción.
 
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
