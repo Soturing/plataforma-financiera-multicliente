@@ -46,6 +46,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Un solo aplicador de migraciones (§3.7.3):** `app/migraciones.py` lo usan los clientes (`tenants`), la base
+  desechable del CI y la base de desarrollo (`python -m app.migraciones aplicar --url ...`, con
+  `--semilla ARCHIVO@NNN` para los datos de demostración y `--hasta-previas NNN` para adoptar una base ya
+  migrada). El `compose.yaml` de desarrollo ya no monta archivos sueltos en `initdb.d`: una migración nueva sólo
+  necesita su archivo en `db/migrations/`.
+
 - **Dependencias de desarrollo separadas (§3.7.2):** `requirements-dev.txt` (incluye `requirements.txt` más
   `pytest`, `pip-audit` y `bandit`, con versión fija). `pytest` sale de `requirements.txt`, así que la imagen
   de producción ya no lo instala. El CI y la guía de instalación usan el archivo de desarrollo.
