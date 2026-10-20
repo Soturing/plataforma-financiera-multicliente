@@ -41,7 +41,14 @@ jobs:
       - name: Base desechable con todas las migraciones
         run: python scripts/preparar_base_pruebas.py --puerto 5432 --admin-password dp_admin_ci
       # tests/identidad necesita Keycloak; las pruebas del plano de control se omiten solas sin su base.
-      - run: python -m pytest -q -rfE --ignore=tests/identidad
+      # Cobertura sólo informativa (sin umbral): se imprime y se guarda como artefacto.
+      - run: python -m pytest -q -rfE --ignore=tests/identidad --cov=app --cov-report=term --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura
+          path: coverage.xml
+          if-no-files-found: ignore
 
   secretos:
     runs-on: ubuntu-24.04
