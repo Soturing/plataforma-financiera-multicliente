@@ -268,3 +268,13 @@ Estado: adoptada (2026-10-19). Detalle en `docs/roadmap-producto.md` §2.3 punto
 - La app declara `app.identidad` en las opciones de la conexión (`app/database.py`) y el trigger `seguridad.completar_identidad` lo copia al escribir o al cambiar la etiqueta. El valor nunca viaja en el cuerpo de la petición.
 - Sin sesión el `_id` queda vacío (no se inventa) y las filas anteriores no se rellenan. `core.trabajos_ocr.reservado_por` se excluye: identifica a un worker, no a una persona.
 - `tenant_runtime` recibe `statement_timeout` de 120 s e `idle_in_transaction_session_timeout` de 60 s (`tenants crear_roles` y `tenants migrar`).
+
+## D-030 — ClamAV obligatorio en el servidor, piso de cobertura, cuotas y desglose que no cuadra
+
+Estado: adoptada (2026-10-20), a petición del responsable del producto.
+
+- **Antivirus:** sí. ClamAV corre como servicio compartido del plano de control; en el servidor el modo es `obligatorio` (si no responde, no se acepta el archivo) y en desarrollo `apagado`. Detalle en `app/antivirus.py`.
+- **Cobertura:** el responsable desconoce el estándar; se fija un **piso de 60 %** (hoy 66 %) que sólo se sube. Para código nuevo se recomienda 80 %, pero no se exige.
+- **Desglose que no cuadra:** se **mantiene** la regla actual: la factura puede aprobarse «verificando el total». No se añade un `CHECK` de totales en la base.
+- **Cuotas por cliente:** 10 000 documentos al día (≈ 3 veces el volumen esperado) y 50 GB de archivos, ajustables por cliente.
+- **Retención del borrado lógico (para el diseño de la etapa siguiente):** 5 años, por la obligación fiscal de conservar los comprobantes.

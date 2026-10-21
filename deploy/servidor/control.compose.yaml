@@ -94,6 +94,23 @@ services:
       interval: 5s
       retries: 20
 
+  # Antivirus compartido por todos los clientes (roadmap §3.6.4). Las apps lo alcanzan por la red
+  # `facturas_control` como `antivirus:3310`; no se publica. Descarga sus firmas al arrancar y se
+  # actualiza solo; con el volumen no las repite en cada reinicio. Necesita ~2 GB de memoria.
+  antivirus:
+    image: clamav/clamav:1.5.4
+    restart: unless-stopped
+    environment:
+      CLAMD_CONF_StreamMaxLength: 110M    # los archivos suben hasta 100 MB (FACTURAS_MAX_UPLOAD_BYTES)
+      CLAMD_CONF_MaxFileSize: 110M
+      CLAMD_CONF_MaxScanSize: 400M
+    volumes:
+      - antivirus_firmas:/var/lib/clamav
+    mem_limit: ${ANTIVIRUS_MEM_LIMIT:-2g}
+    # Sin `cap_drop`: el arranque de la imagen necesita chown y cambiar de usuario (root a clamav).
+    security_opt: ["no-new-privileges:true"]
+    networks: [control]
+
   secretos:
     image: quay.io/openbao/openbao:2.7.1
     command: ["server"]
@@ -114,6 +131,7 @@ volumes:
   control_postgres:
   secretos_datos:
   secretos_auditoria:
+  antivirus_firmas:
 
 networks:
   control:

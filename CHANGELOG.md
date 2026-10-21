@@ -46,6 +46,17 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ### Seguridad (etapa 2 del roadmap)
 
+- **Antivirus ClamAV (§3.6.4):** todo archivo que suben las personas (facturas, lotes, evidencias, catálogo de
+  proveedores y archivos de ventas) se escanea con `clamd` antes de guardarse (`app/antivirus.py`, sin
+  dependencias nuevas). Tres modos en `FACTURAS_ANTIVIRUS_MODO`: `apagado` (desarrollo, por defecto),
+  `opcional` y `obligatorio` (el del servidor: si el antivirus no responde, el archivo se rechaza). Un archivo
+  infectado se rechaza siempre y no queda en disco. El servicio `antivirus` (ClamAV 1.5.4, ~2 GB de memoria) va en
+  `deploy/servidor/control.compose.yaml`, compartido por todos los clientes. Probado contra ClamAV real con EICAR.
+- **Cuotas por cliente (§3.6.7):** 10 000 documentos al día y 50 GB de archivos por defecto
+  (`FACTURAS_CUOTA_DOCUMENTOS_DIA`, `FACTURAS_CUOTA_ALMACENAMIENTO_MB`; 0 las apaga); al pasarse la app responde
+  429 o 507 y avisa en el registro al llegar al 80 % del almacenamiento (`app/cuota.py`).
+- **Cobertura mínima de 60 % en el CI** (hoy 66 %): el CI falla si baja; el piso sólo se sube.
+
 - **Un solo aplicador de migraciones (§3.7.3):** `app/migraciones.py` lo usan los clientes (`tenants`), la base
   desechable del CI y la base de desarrollo (`python -m app.migraciones aplicar --url ...`, con
   `--semilla ARCHIVO@NNN` para los datos de demostración y `--hasta-previas NNN` para adoptar una base ya

@@ -34,6 +34,7 @@ Internet ──443──► Caddy (TLS automático)
 | OpenBao, Caddy, 2 PostgreSQL de control | 0.6 GB |
 | Por cliente: PostgreSQL + app | 0.7 GB |
 | Por cliente: 1 worker OCR (PaddleOCR) | 1.5–2 GB |
+| Antivirus ClamAV (uno para todos los clientes) | ~2 GB |
 
 Con 1–2 clientes: **mínimo 8 GB y 4 vCPU; recomendado 16 GB y 4–8 vCPU** (el OCR consume mucha CPU), 160 GB NVMe y Ubuntu 24.04 LTS.
 

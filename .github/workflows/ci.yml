@@ -41,8 +41,8 @@ jobs:
       - name: Base desechable con todas las migraciones
         run: python scripts/preparar_base_pruebas.py --puerto 5432 --admin-password dp_admin_ci
       # tests/identidad necesita Keycloak; las pruebas del plano de control se omiten solas sin su base.
-      # Cobertura sólo informativa (sin umbral): se imprime y se guarda como artefacto.
-      - run: python -m pytest -q -rfE --ignore=tests/identidad --cov=app --cov-report=term --cov-report=xml
+      # Cobertura: piso de 60 % (D-030; hoy 66 %) que sólo se sube, nunca se baja; se imprime y se guarda como artefacto.
+      - run: python -m pytest -q -rfE --ignore=tests/identidad --cov=app --cov-report=term --cov-report=xml --cov-fail-under=60
       - uses: actions/upload-artifact@v4
         if: always()
         with:

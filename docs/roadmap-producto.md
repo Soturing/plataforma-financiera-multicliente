@@ -185,28 +185,25 @@ Rama de integración `integracion/etapa2`: reúne el trabajo de los PR #3 y #9 a
 | Punto del roadmap | Hecho | Queda |
 |---|---|---|
 | §3.1 / hallazgo 1: salir del modo abierto | `acceso_modo` es `seguro` por defecto y producción no arranca en modo abierto (D-028, PR #5). | Retirar por completo el modo abierto cuando el front ya no lo necesite en desarrollo. |
-| §3.6.4 / hallazgo 5: firma de archivos | Verificación por los primeros bytes en facturas, lotes, evidencias, catálogo y ventas; la extensión sale del contenido (PR #7). | ClamAV: **decisión tuya** (consume memoria). Un PDF corrupto con firma válida sigue llegando al OCR. |
+| §3.6.4 / hallazgo 5: firma de archivos y antivirus | Verificación por los primeros bytes en facturas, lotes, evidencias, catálogo y ventas; la extensión sale del contenido (PR #7). ClamAV obligatorio en el servidor, probado con EICAR (D-030). | Un PDF corrupto con firma válida sigue llegando al OCR. |
 | §3.6.5 / hallazgo 7: cabeceras y CSP | CSP (`script-src 'self'`), `nosniff`, `X-Frame-Options`, `Referrer-Policy`; sólo PDF e imágenes en línea (PR #4). | `style-src` sin `unsafe-inline`: requiere sustituir los atributos `style` del front. |
 | §3.6.6 / hallazgo 14: `/docs` | Apagado fuera de desarrollo con acceso abierto (PR #4). | — |
-| §3.6.7 / hallazgo 6: tasa y recursos | Límite de peticiones por IP (429), lectura de archivos por partes, topes de memoria y CPU, contenedores sin capacidades y API de sólo lectura (PR #6, #16). | Cuota por cliente y workers sin salida a internet (necesitan cifras o red del servidor). |
+| §3.6.7 / hallazgo 6: tasa y recursos | Límite de peticiones por IP (429), lectura de archivos por partes, topes de memoria y CPU, contenedores sin capacidades y API de sólo lectura (PR #6, #16), cuotas por cliente de 10 000 documentos al día y 50 GB (D-030). | Workers sin salida a internet (necesita la red del servidor). |
 | §3.6.8 / hallazgo 9: rutas y nombres | Rutas relativas al directorio del cliente y nombres limpios (PR #10). | Convertir las rutas absolutas ya guardadas (las raíces varían por entorno). |
 | §3.6.9 / hallazgo 8: `innerHTML` | Revisados los 79 usos: todo texto de la base se escapa; prueba estática contra regresiones (PR #17). | — |
 | §3.7.1 / hallazgo 15: escaneo en CI | `bandit` limpio y bloqueante; `pip-audit` bloqueante; XML revisa todo el contenido (PR #8, #12). | `ruff` y Semgrep. |
 | §3.7.2: dependencias de desarrollo | `requirements-dev.txt` con herramientas fijadas (PR #8). | Versiones con hash. |
 | §3.7.3: un solo aplicador de migraciones | `app/migraciones.py` para clientes, CI y desarrollo (PR #9). | — |
-| §3.7.4: pruebas | Dinero sin `float` y redondeo, cobertura en CI (65 %, sin umbral), pruebas de restricciones de la base (PR #14, #15). | Pruebas de carga (24 000 documentos por semana y 14 usuarios: **necesitan un entorno de medición**) y umbral de cobertura (**decisión**). |
+| §3.7.4: pruebas | Dinero sin `float` y redondeo, cobertura en CI (65 %, sin umbral), pruebas de restricciones de la base (PR #14, #15). | Pruebas de carga (24 000 documentos por semana y 14 usuarios: **necesitan un entorno de medición**). Piso de cobertura de 60 % fijado (D-030). |
 | §3.7.5 / hallazgo 12: registro | ID de correlación por petición y JSON en servidor (PR #13). | Tablero de alertas y métricas de la cola. |
 | §3.8.2: identidad estable | Migración 035: `<col>_por_id` copiado de la sesión por trigger, 29 columnas (D-029, PR #11). | Aplicarla a GRUPO-DEMO y GRUPO-PRUEBA-B con `tenants migrar`, con respaldo previo. |
 | §3.8.3: topes de `tenant_runtime` | `statement_timeout` 120 s e `idle_in_transaction` 60 s (PR #11). | — |
-| §3.8.4: reglas financieras | Revisado: periodos ya validados por `CHECK`. | **Decisión de negocio:** hoy se puede aprobar un desglose que no cuadra «verificando el total»; un `CHECK` de totales lo prohibiría. `EXCLUDE` de periodos: falta definir la clave. |
+| §3.8.4: reglas financieras | Revisado: periodos ya validados por `CHECK`. Se mantiene aprobar un desglose que no cuadra «verificando el total» (D-030): no habrá `CHECK` de totales. | `EXCLUDE` de periodos: falta definir la clave. |
 | §3.8.5: pruebas de la base | 11 pruebas de restricciones (PR #15). | Triggers y cascadas más finos. |
 
 **Pendientes que necesitan una decisión tuya**
 
-- ClamAV (antivirus en el worker): sí o no, y cuándo.
-- Umbral de cobertura mínima en el CI.
-- ¿Se prohíbe aprobar una factura cuyo desglose no cuadra? (condiciona el `CHECK` de totales).
-- Cuota por cliente (cifras) y política de retención del borrado lógico de facturas.
+- (Resueltas el 2026-10-20, D-030: ClamAV sí, piso de cobertura de 60 %, el desglose que no cuadra se mantiene, cuotas por defecto y retención de 5 años.)
 - Borrado lógico de facturas y reautenticación C2 en borrados (diseño).
 - Archivar `codex/security-foundation`: la rama sigue en `origin`; borrarla o etiquetarla es tu decisión.
 
