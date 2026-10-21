@@ -204,7 +204,7 @@ Rama de integración `integracion/etapa2`: reúne el trabajo de los PR #3 y #9 a
 **Pendientes que necesitan una decisión tuya**
 
 - (Resueltas el 2026-10-20, D-030: ClamAV sí, piso de cobertura de 60 %, el desglose que no cuadra se mantiene, cuotas por defecto y retención de 5 años.)
-- Borrado lógico de facturas y reautenticación C2 en borrados (diseño).
+- Borrado lógico de facturas: hoy sólo se borran (físicamente) documentos pendientes y las aprobadas no se pueden quitar. La **reautenticación C2 en borrados ya existe**: `DELETE /api/v1/facturas` y la cancelación o borrado de lotes son C2 en `politica.py`, el servidor exige autenticación de menos de 15 minutos y `acceso.js` la solicita; falta pedir un **motivo** (AS-09). La opción propuesta es una *anulación* de facturas aprobadas, con motivo, sin borrar el registro ni el archivo (5 años, D-030); está pendiente de tu elección.
 - Archivar `codex/security-foundation`: la rama sigue en `origin`; borrarla o etiquetarla es tu decisión.
 
 ## 4. Orden de ejecución propuesto
