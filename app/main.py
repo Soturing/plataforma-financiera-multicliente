@@ -25,6 +25,7 @@ from app import registro
 from app.endurecimiento import CABECERAS_SEGURIDAD, disposicion, documentacion_activa
 from app.errors import DomainError
 from app.firma_archivos import CABECERA_MINIMA, TIPO_POR_MIME, verificar as verificar_firma
+from app.antivirus import escanear_bytes
 from app.limite_tasa import LimitadorVentana, ip_del_cliente
 from app.weekly_report import build_weekly_purchase_report
 from app.executive_report import build_blank_executive_report, build_weekly_executive_report
@@ -893,10 +894,12 @@ async def import_providers(
     confirmar: bool = Form(False),
     importado_por: str = Form(...),
     conn: Connection = Depends(get_connection),
+    settings: Settings = Depends(get_settings),
 ):
     if not (archivo.filename or "").lower().endswith((".xlsx", ".csv", ".tsv")):
         raise DomainError("El catálogo debe ser XLSX, CSV o TSV.", 415)
     content = await read_limited(archivo, 10 * 1024 * 1024, "El catálogo supera el límite de 10 MB.")
+    await escanear_bytes(content, settings, nombre_seguro(archivo.filename, "catalogo"))
     es_xlsx = (archivo.filename or "").lower().endswith(".xlsx")
     if es_xlsx:
         verificar_firma(content[:CABECERA_MINIMA], "xlsx")
@@ -1197,6 +1200,7 @@ async def preview_sales_file(
     if not content:
         raise DomainError("El archivo está vacío.", 422)
     verificar_firma(content[:CABECERA_MINIMA], "xlsx" if is_xlsx else TIPO_POR_MIME[archivo.content_type])
+    await escanear_bytes(content, settings, nombre_seguro(archivo.filename, "ventas"))
     branch = conn.execute(
         """
         SELECT id, clave, nombre, restaurante

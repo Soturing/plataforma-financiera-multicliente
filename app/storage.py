@@ -5,7 +5,9 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 
+from app.antivirus import escanear_archivo
 from app.config import Settings
+from app.cuota import registrar_subida, verificar_almacenamiento, verificar_documentos
 from app.errors import DomainError
 from app.firma_archivos import EXTENSION_POR_TIPO, tipo_esperado, verificar
 
@@ -73,6 +75,8 @@ async def save_upload(file: UploadFile, settings: Settings) -> tuple[Path, str, 
 
     if file.content_type in {"application/xml", "text/xml"} and extension != ".xml":
         raise DomainError("El archivo XML debe tener extensión .xml.", 415)
+    verificar_documentos(settings)
+    verificar_almacenamiento(settings)
     primer = await file.read(1024 * 1024)
     if primer:
         # El contenido manda: la extensión con la que se guarda sale del tipo detectado,
@@ -110,4 +114,12 @@ async def save_upload(file: UploadFile, settings: Settings) -> tuple[Path, str, 
         destination.unlink(missing_ok=True)
         raise DomainError("El archivo está vacío.")
 
+    try:
+        verificar_almacenamiento(settings, size)  # la cuota cuenta lo que acaba de llegar
+        await escanear_archivo(destination, settings)  # infectado o sin verificar en modo obligatorio: no se conserva
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    registrar_subida(size)
     return destination, digest.hexdigest(), size

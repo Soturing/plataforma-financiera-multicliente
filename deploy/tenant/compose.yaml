@@ -61,6 +61,8 @@ services:
       FACTURAS_APP_URL: ${FACTURAS_APP_URL}
       FACTURAS_UPLOAD_DIR: /datos/uploads
       FACTURAS_ACCESO_MODO: ${FACTURAS_ACCESO_MODO:-seguro}
+      # ClamAV (servicio `antivirus` del plano de control): en el servidor un archivo sin verificar se rechaza.
+      FACTURAS_ANTIVIRUS_MODO: ${FACTURAS_ANTIVIRUS_MODO:-obligatorio}
       FACTURAS_COOKIE_SEGURA: ${FACTURAS_COOKIE_SEGURA:-true}
       FACTURAS_OIDC_ISSUER: ${FACTURAS_OIDC_ISSUER:-http://localhost:8180/realms/facturas}
       FACTURAS_OIDC_URL_INTERNA: http://identidad:8080

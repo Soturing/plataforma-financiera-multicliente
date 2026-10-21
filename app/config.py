@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     limite_acceso_por_minuto: int = 30
     # Detrás del proxy propio (Caddy) la IP real viene en X-Forwarded-For; sin proxy no se confía en ella.
     proxy_confiable: bool = False
+    # Cuotas por cliente (app/cuota.py); 0 las apaga. 10 000 documentos al día triplica el volumen esperado
+    # (24 000 por semana); 50 GB es una parte del disco del servidor, a ajustar por cliente al contratar.
+    cuota_documentos_dia: int = 10_000
+    cuota_almacenamiento_mb: int = 51_200
+    # Antivirus ClamAV (app/antivirus.py): "apagado" (desarrollo), "opcional" (escanea y, si el servicio
+    # no responde, acepta con aviso) u "obligatorio" (si no responde, rechaza; el del servidor).
+    antivirus_modo: Literal["apagado", "opcional", "obligatorio"] = "apagado"
+    antivirus_host: str = "antivirus"
+    antivirus_puerto: int = 3310
+    antivirus_timeout: float = 60.0
     # Cola OCR: procesos lectores permanentes. Cada uno carga su propio modelo
     # (cientos de MB de RAM), así que súbalo según la memoria del servidor.
     ocr_workers: int = 1
