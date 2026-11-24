@@ -79,6 +79,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 - PostgreSQL del `compose.yaml` de desarrollo sólo escucha en `127.0.0.1`.
 
 - `numpy` y `Pillow` se importaban sin estar declarados en `requirements.txt`.
+- El OCR ya no se queda en `error` cuando una foto se parece a varios documentos ya cargados: los parecidos
+  se reúnen en una sola validación `POSIBLE_DUPLICADO` (antes violaba `validaciones_interpretacion_id_codigo_key`).
 
 ## [0.1.0] - 2026-10-18
 

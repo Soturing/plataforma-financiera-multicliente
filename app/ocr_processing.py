@@ -253,6 +253,9 @@ def persist_ocr_result(
                     "SUCURSAL_POR_CONSUMO", "advertencia", False, "sucursal_id",
                     "La composición de compra sugiere una sucursal, pero requiere confirmación humana",
                 ))
+        # Una sola validación por código (validaciones_interpretacion_id_codigo_key):
+        # si hay varios parecidos, se listan todos en el mismo mensaje.
+        similar = []
         for duplicate in find_possible_duplicates(
             conn, invoice_id, provider_id=provider_id, total=fields["total"],
             issue_date=fields["fecha_emision"], folio=fields["folio"], folio_origin=fields["folio_origen"],
@@ -262,9 +265,11 @@ def persist_ocr_result(
                 if duplicate["motivo"] == "folio"
                 else "mismo proveedor y total: un ticket y su factura son un solo gasto"
             )
+            similar.append(f"{duplicate['archivo']} ({reason})")
+        if similar:
             checks.append((
                 "POSIBLE_DUPLICADO", "advertencia", False, "total",
-                f"Parecido a {duplicate['archivo']} ({reason}); verifique antes de aprobar",
+                f"Parecido a {'; '.join(similar)}; verifique antes de aprobar",
             ))
         checks.append(("PROVEEDOR", "error", provider_id is not None, "proveedor", "Proveedor identificado" if provider_id else "Proveedor requiere selección"))
         checks.append(("FECHA", "error", fields["fecha_emision"] is not None, "fecha_emision", "Fecha identificada" if fields["fecha_emision"] else "Fecha no identificada"))
